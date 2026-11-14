@@ -34,7 +34,7 @@ truck comes out in the exit lane. It needs roughly 75 km/h at the entry.
 Track points must be passed in order, so a lap only counts if the loop and the
 bridge are driven.
 
-The bridge deck is missing for six metres at the top of the climb, well before
+The bridge deck is missing for nine metres at the top of the climb, well before
 the middle of the bridge, and the road kicks up into a lip just before the hole.
 At racing speed the truck flies off the lip and lands on the level deck beyond;
 too slow, and it drops through to the road underneath. A dirt road runs

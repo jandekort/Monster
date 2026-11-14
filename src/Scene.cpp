@@ -256,16 +256,15 @@ void Scene::addFaces(const Terrain& terrain)
             color = dirtDark;
             break;
         case Face::Surface::Bank:
-            color = Color(0.26f, 0.56f, 0.23f); // the darker of the two greens the field is tiled in
+            color = Color(0.30f, 0.62f, 0.26f); // the field's own green, shaded by the slope it lies on
             break;
         default:
             require(false, "Scene::addFaces: unknown surface");
         }
         const Vec3 offset = face.m_normal * lift;
-        // The dirt road and its banks are lit as level ground, so that they are one colour from
-        // end to end and the banks match the field, whichever way a tile happens to slope
-        const bool earth = face.m_surface == Face::Surface::DirtPale || face.m_surface == Face::Surface::DirtDark
-            || face.m_surface == Face::Surface::Bank;
+        // The dirt road is lit as level ground, so that it is one colour from end to end.
+        // The banks keep their real slope, so the side in shadow reads darker, as it did before
+        const bool earth = face.m_surface == Face::Surface::DirtPale || face.m_surface == Face::Surface::DirtDark;
         m_mesh.addQuad(face.m_a + offset, face.m_b + offset, face.m_c + offset, face.m_d + offset, color,
             earth ? Vec3(0.0, 1.0, 0.0) : face.m_normal);
     }
