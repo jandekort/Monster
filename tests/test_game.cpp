@@ -291,7 +291,7 @@ int main()
         std::cout << "    sideslip " << slip << " m/s, radius " << radius
             << " m, min up.y " << minUp << std::endl;
         check(slip < 0.8, "tyres hold instead of sliding sideways");
-        check(radius < 52.0, "the turn is tight");
+        check(radius < 65.0, "the turn is tight (grass is slower now, so it is wider than on tarmac)");
         check(minUp > 0.9, "a hard corner does not tip the truck");
         check(dot(truck.forward(), entry) < 0.5, "the truck turns well past a right angle");
     }

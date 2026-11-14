@@ -36,7 +36,7 @@ double Face::traction(Surface surface)
     case Surface::DirtDark:
         return 0.86;
     case Surface::Bank:
-        return 0.70; // grass, the same going as the rest of the verge
+        return 0.55; // grass, the same going as the rest of the verge
     default:
         require(false, "Face::traction: unknown surface");
         return 1.0;
@@ -156,7 +156,7 @@ Terrain::Terrain()
     , m_gridColumns(0)
     , m_gridRows(0)
     , m_cells()
-    , m_grassTraction(0.70)
+    , m_grassTraction(0.55)
     , m_stripeWidth(0.5)
     , m_deckThickness(0.6)
 {
