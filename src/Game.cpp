@@ -28,16 +28,19 @@ Game::Game()
     , m_loopPoints(500)
     , m_gateRadius(12.0)
     , m_gateWindow(10)
+    , m_gateDepth(5.0)
+    , m_gateReach(40.0)
     , m_tippedClock(0.0)
     , m_wreckedClock(0.0)
     , m_wrecked(false)
     , m_crushClock(-1.0)
     , m_best(0)
+    , m_setupIndex(3)
     , m_progress(0)
     , m_lap(1)
     , m_lapTime(0.0)
     , m_bestLapTime(-1.0)
-    , m_checkpointsPassed()
+    , m_crossing()
     , m_lapClock(-1.0)
     , m_missedClock(-1.0)
     , m_lastLapTime(0.0)
@@ -48,9 +51,16 @@ Game::Game()
     reset();
 }
 
+void Game::selectSetup(int index)
+{
+    m_setupIndex = (int) clamp(index, 1.0, Truck::setupCount());
+    m_truck.setSetup(Truck::setupAt(m_setupIndex));
+}
+
 void Game::reset()
 {
     m_best = std::max(m_best, getScore());
+    m_truck.setSetup(Truck::setupAt(m_setupIndex));
     m_terrain.reset();
     m_judge.reset();
     m_truck.reset(Vec3(0.0, m_truck.getRideHeight(), 0.0));
@@ -108,11 +118,20 @@ void Game::startAt(size_t pointIndex)
     m_lapTime = 0.0;
 }
 
-// Put the truck back on the road where it last was. The checkpoints already passed this lap
-// are kept: being set upright is not a shortcut.
+// Put the truck back on the road at the last gate it cleared, or at the start and finish line
+// if it has not cleared one yet. Gates already cleared are kept: they were driven through.
 void Game::recover()
 {
-    placeOnTrack(m_progress);
+    const std::vector<size_t>& checkpoints = m_terrain.getTrack().getCheckpoints();
+    size_t target = 0;
+    for (size_t i = 0; i < checkpoints.size(); ++i)
+    {
+        if (m_crossing[i] == Crossing::Cleared)
+        {
+            target = checkpoints[i];
+        }
+    }
+    placeOnTrack(target);
 }
 
 void Game::step(double elapsed)
@@ -126,6 +145,7 @@ void Game::step(double elapsed)
         // onto its wheels and launch it
         m_truck.step(m_fixedStep, m_wrecked ? Controls() : m_controls, m_terrain);
         m_judge.update(m_truck, m_fixedStep);
+        updateCheckpoints();
         updateProgress();
         updateStunts();
 
@@ -162,30 +182,51 @@ int Game::getCheckpointCount() const
 
 int Game::getCheckpointsPassed() const
 {
-    return (int) std::count(m_checkpointsPassed.begin(), m_checkpointsPassed.end(), true);
+    return (int) std::count(m_crossing.begin(), m_crossing.end(), Crossing::Cleared);
 }
 
 bool Game::lapIsComplete() const
 {
-    return std::all_of(m_checkpointsPassed.begin(), m_checkpointsPassed.end(),
-        [](bool passed) { return passed; });
+    return std::all_of(m_crossing.begin(), m_crossing.end(),
+        [](Crossing crossing) { return crossing == Crossing::Cleared; });
 }
 
 void Game::clearCheckpoints()
 {
-    m_checkpointsPassed.assign(m_terrain.getTrack().getCheckpoints().size(), false);
+    m_crossing.assign(m_terrain.getTrack().getCheckpoints().size(), Crossing::Away);
 }
 
-// Only gates the truck actually drove through are marked, so a lap begun partway round the
-// circuit cannot be credited
-void Game::markCheckpoints(size_t from, size_t to)
+// A gate is cleared by crossing the line a little before it and then the line a little after it,
+// both of them within the width of the gate. Driving round the outside of a gate, or turning
+// back short of one, therefore leaves it uncleared.
+void Game::updateCheckpoints()
 {
-    const std::vector<size_t>& checkpoints = m_terrain.getTrack().getCheckpoints();
+    const Track& track = m_terrain.getTrack();
+    const std::vector<PathPoint>& points = track.getPoints();
+    const std::vector<size_t>& checkpoints = track.getCheckpoints();
+
     for (size_t i = 0; i < checkpoints.size(); ++i)
     {
-        if (checkpoints[i] > from && checkpoints[i] <= to)
+        if (m_crossing[i] == Crossing::Cleared)
         {
-            m_checkpointsPassed[i] = true;
+            continue;
+        }
+
+        const PathPoint& gate = points[checkpoints[i]];
+        const Vec3 offset = m_truck.getPosition() - gate.m_position;
+        if (length(offset) > m_gateReach || std::fabs(dot(offset, gate.m_cross)) > track.getGateHalfWidth())
+        {
+            continue;
+        }
+
+        const double along = dot(offset, gate.m_forward);
+        if (m_crossing[i] == Crossing::Away && along < -m_gateDepth)
+        {
+            m_crossing[i] = Crossing::Approached;
+        }
+        else if (m_crossing[i] == Crossing::Approached && along > m_gateDepth)
+        {
+            m_crossing[i] = Crossing::Cleared;
         }
     }
 }
@@ -205,7 +246,6 @@ void Game::updateProgress()
         m_missedClock += m_fixedStep;
     }
 
-    const size_t previous = m_progress;
     for (size_t ahead = m_gateWindow; ahead >= 1; --ahead)
     {
         const size_t index = std::min(m_progress + ahead, last);
@@ -215,8 +255,6 @@ void Game::updateProgress()
             break;
         }
     }
-
-    markCheckpoints(previous, m_progress);
 
     if (m_progress == last)
     {
@@ -309,9 +347,11 @@ std::string Game::hudString() const
         std::snprintf(message, sizeof(message), "CRUSHED! +%d", m_crushPoints + m_crushBonus);
     }
 
-    char hud[224];
-    std::snprintf(hud, sizeof(hud), "%d|%d|%d|%s|%d|%.1f|%.1f|%d|%d",
+    const Truck::Setup& setup = m_truck.getSetup();
+    char hud[288];
+    std::snprintf(hud, sizeof(hud), "%d|%d|%d|%s|%d|%.1f|%.1f|%d|%d|%d|%s|%.2f|%d",
         (int) std::lround(m_truck.getSpeed() * 3.6), getScore(), m_best, message,
-        m_lap, m_lapTime, m_bestLapTime, getCheckpointsPassed(), getCheckpointCount());
+        m_lap, m_lapTime, m_bestLapTime, getCheckpointsPassed(), getCheckpointCount(),
+        m_setupIndex, getSetupName(), setup.m_grip, (int) std::lround(setup.m_topSpeed * 3.6));
     return std::string(hud);
 }

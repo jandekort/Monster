@@ -11,6 +11,7 @@
 class Game;
 class Terrain;
 class Track;
+struct PathPoint;
 class Truck;
 class Wreck;
 
@@ -61,10 +62,12 @@ private:
     void addFaces(const Terrain& terrain);
     void addMarkings(const Track& track);
     void addCheckpoints(const Track& track);
-    void addNumber(const Vec3& center, const Vec3& right, const Vec3& up, double height, int value,
-        const Color& color);
-    void addDigit(const Vec3& center, const Vec3& right, const Vec3& up, double height, int digit,
-        const Color& color);
+    void addGate(const PathPoint& point, double halfWidth, const Color& banner, const char* label,
+        double textHeight);
+    void addText(const Vec3& center, const Vec3& right, const Vec3& up, double height,
+        const char* text, const Color& color);
+    void addGlyph(const Vec3& center, const Vec3& right, const Vec3& up, double pixel,
+        const unsigned char* rows, const Color& color);
     void plantTrees(const Track& track);
     void addWreck(const Wreck& wreck);
     void addScenery();
@@ -79,7 +82,10 @@ private:
     double m_gateBanner;      // underside of the banner: headroom for the truck [m]
     double m_poleHalfWidth;
     double m_bannerHalfDepth; // thickness of the banner along the road [m]
-    double m_digitHeight;
+    double m_digitHeight;     // height of a checkpoint number on its banner [m]
+    double m_labelHeight;     // height of the start and finish lettering [m]
+    int m_glyphColumns;       // banner font, pixels across
+    int m_glyphRows;          // banner font, pixels down
     double m_treeSpacing;
     double m_treeClearance; // distance kept from the road centre [m]
     bool m_planted;         // true->m_trees is filled

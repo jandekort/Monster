@@ -40,8 +40,10 @@ public:
     double getLength() const { return m_points.back().m_distance; }
     double getBridgeHeight() const { return m_bridgeHeight; }
 
-    // Track points carrying a checkpoint gate, in the order they are driven through
+    // Track points carrying a numbered checkpoint gate, in the order they are driven through.
+    // The start and finish line is the point the lap begins and ends on, and is not one of them.
     const std::vector<size_t>& getCheckpoints() const { return m_checkpoints; }
+    const PathPoint& getStartFinish() const { return m_points.front(); }
     double getGateHalfWidth() const { return m_halfWidth + m_gateMargin; }
 
 private:
@@ -69,8 +71,6 @@ private:
 
     // Checkpoints
     size_t m_checkpointCount;
-    double m_firstCheckpoint;     // distance of the first gate past the start line [m]; must be
-                                  // beyond Game's capture radius, or it is credited on the line
     double m_gateMargin;          // how far outside the road edge the poles stand [m]
     double m_gateClearance;       // level, straight road needed either side of a gate [m]
 

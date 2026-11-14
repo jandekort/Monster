@@ -42,6 +42,12 @@ MONSTER_EXPORT(monster_reset) void monster_reset()
     app().m_camera.snap();
 }
 
+// Tyre setup, 1 is the softest. Out of range values are clamped.
+MONSTER_EXPORT(monster_select_setup) void monster_select_setup(int index)
+{
+    app().m_game.selectSetup(index);
+}
+
 // Sets the truck upright on the road where it last was, keeping the score
 MONSTER_EXPORT(monster_recover) void monster_recover()
 {

@@ -37,9 +37,26 @@ struct Wheel
 class Truck
 {
 public:
+    // Struct Setup: how the tyres are set up for a run. A softer compound grips harder and
+    // reaches full grip at a smaller slip, but drags more, so the truck runs slower.
+    struct Setup
+    {
+        double m_grip = 1.10;
+        double m_topSpeed = 40.0;      // [m/s]
+        double m_slipSaturation = 0.9; // lateral slip speed at which the tyre reaches full grip [m/s]
+    };
+
     Truck();
 
+    // Tyre setups the player can choose between, 1 is the softest
+    static int setupCount();
+    static Setup setupAt(int index);
+    static const char* setupName(int index);
+    static double minGrip();
+    static double maxGrip();
+
     // Mutator
+    void setSetup(const Setup& setup); // grip is clamped to what the truck can hold
     void reset(const Vec3& position);
     void placeAt(const Vec3& position, const Vec3& forward, const Vec3& normal); // upright and at rest
     void step(double dt, const Controls& controls, Terrain& terrain);
@@ -49,6 +66,7 @@ public:
     const Vec3& getVelocity() const { return m_velocity; }
     const Vec3& getAngularVelocity() const { return m_angularVelocity; }
     const Quat& getOrientation() const { return m_orientation; }
+    const Setup& getSetup() const { return m_setup; }
     const std::vector<Wheel>& getWheels() const { return m_wheels; }
     const std::vector<Vec3>& getBodyPoints() const { return m_bodyPoints; }
     const Vec3& getContactNormal() const { return m_contactNormal; } // surface under the last wheel contact
@@ -104,11 +122,9 @@ private:
     double m_rayMargin;        // extra ray length above the tyre [m]
 
     // Tyres and drivetrain
-    double m_grip;           // friction coefficient
-    double m_slipSaturation; // lateral slip speed at which grip saturates [m/s]
+    Setup m_setup;
     double m_driveForce;     // per wheel [N]
     double m_brakeForce;     // per wheel [N]
-    double m_topSpeed;
     double m_reverseSpeed;
     double m_rollingDrag;    // per wheel [N s/m]
     double m_maxSteer;

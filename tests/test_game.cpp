@@ -9,6 +9,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 namespace
 {
@@ -86,11 +87,13 @@ int main()
             onGoodRoad = onGoodRoad && point.m_kind == PathPoint::Kind::Flat && !point.m_corner;
             std::cout << "    gate " << i + 1 << " at " << point.m_distance << " m" << std::endl;
         }
-        check(checkpoints.size() == 5, "there are five checkpoints");
+        check(checkpoints.size() == 4, "there are four numbered checkpoints");
         check(ordered, "they are in driving order");
         check(onGoodRoad, "every gate stands on level, straight road");
-        check(points[checkpoints.front()].m_distance < 0.1 * track.getLength(), "the first is just past the start");
-        check(points[checkpoints.back()].m_distance < track.getLength(), "the last is before the start line");
+        check(track.getStartFinish().m_distance == 0.0, "the start and finish line opens the lap");
+        check(points[checkpoints.front()].m_distance > 0.1 * track.getLength(),
+            "the first gate is well clear of the line");
+        check(points[checkpoints.back()].m_distance < track.getLength(), "the last is before the line");
         check(track.getGateHalfWidth() > track.getHalfWidth(), "the gate is wider than the road");
     }
 
@@ -233,19 +236,120 @@ int main()
         check(dot(truck.forward(), entry) < 0.0, "the truck turns well past a right angle");
     }
 
+    std::cout << "Tyre setups" << std::endl;
+    {
+        // All of this runs on empty ground well clear of the circuit: a turn circle started near
+        // the track sweeps back over the wreck at x = 35, and the collision, not the tyres, then
+        // decides the result.
+        const double step = 1.0 / 240.0;
+        const auto runUp = [&](Truck& truck, Terrain& terrain, double seconds, double target)
+        {
+            for (double t = 0.0; t < seconds && truck.getSpeed() < target; t += step)
+            {
+                truck.step(step, drive(1.0, 0.0, 0.0), terrain);
+            }
+        };
+
+        // Turn radius at full lock, and how far the truck leaned doing it. Radius is the measure
+        // of grip here: at a fixed steering angle a grippier tyre turns tighter rather than
+        // sliding less, so sideslip alone would read backwards.
+        const auto corner = [&](int index, double target)
+        {
+            Terrain terrain;
+            Truck truck;
+            truck.setSetup(Truck::setupAt(index));
+            truck.placeAt(Vec3(0.0, 1.64, 200.0), Vec3(1.0, 0.0, 0.0), Vec3(0.0, 1.0, 0.0));
+            runUp(truck, terrain, 30.0, target);
+
+            double minUp = 1.0;
+            double yaw = 0.0;
+            int samples = 0;
+            for (double t = 0.0; t < 4.0; t += step)
+            {
+                truck.step(step, drive(truck.getSpeed() < target ? 1.0 : 0.0, 0.0, 1.0), terrain);
+                minUp = std::min(minUp, truck.up().y);
+                if (t > 1.0)
+                {
+                    yaw += std::fabs(dot(truck.getAngularVelocity(), truck.up()));
+                    ++samples;
+                }
+            }
+            return std::make_pair(truck.getSpeed() * samples / yaw, minUp);
+        };
+
+        const auto topSpeed = [&](int index)
+        {
+            Terrain terrain;
+            Truck truck;
+            truck.setSetup(Truck::setupAt(index));
+            truck.placeAt(Vec3(0.0, 1.64, 200.0), Vec3(1.0, 0.0, 0.0), Vec3(0.0, 1.0, 0.0));
+            runUp(truck, terrain, 25.0, 1000.0);
+            return truck.getSpeed();
+        };
+
+        bool tipped = false;
+        bool gripFalls = true;
+        bool speedRises = true;
+        double previousRadius = 0.0;
+        double previousTop = 0.0;
+        for (int index = 1; index <= Truck::setupCount(); ++index)
+        {
+            const auto [radius, minUp] = corner(index, 18.0);
+            const double top = topSpeed(index);
+            std::cout << "    " << index << " " << Truck::setupName(index)
+                << ": grip " << Truck::setupAt(index).m_grip
+                << ", radius " << radius << " m, top " << (int) std::lround(top * 3.6)
+                << " km/h, min up.y " << minUp << std::endl;
+            tipped = tipped || minUp < 0.9;
+            gripFalls = gripFalls && (index == 1 || radius > previousRadius + 0.5);
+            speedRises = speedRises && (index == 1 || top > previousTop + 1.0);
+            previousRadius = radius;
+            previousTop = top;
+        }
+        check(!tipped, "no setup tips the truck in a sustained full lock corner");
+        check(gripFalls, "each harder setup needs a wider turn, so it grips less");
+        check(speedRises, "each harder setup reaches a higher speed on the straight");
+        check(corner(1, 18.0).first < 0.85 * corner(Truck::setupCount(), 18.0).first,
+            "the softest tyre turns far tighter than the hardest");
+
+        Truck truck;
+        truck.setSetup(Truck::Setup{ 5.0, 40.0, 0.9 });
+        check(truck.getSetup().m_grip == Truck::maxGrip(), "an absurd grip is clamped");
+        truck.setSetup(Truck::Setup{ 0.0, 40.0, 0.9 });
+        check(truck.getSetup().m_grip == Truck::minGrip(), "and so is a useless one");
+    }
+
+    std::cout << "Choosing a setup" << std::endl;
+    {
+        Game game;
+        check(game.getSetupIndex() == 3, "the standard setup is the default");
+        check(std::string(game.getSetupName()) == "STANDARD", "and it is named");
+
+        game.selectSetup(0);
+        check(game.getSetupIndex() == 1, "an index below the range is clamped to the softest");
+        game.selectSetup(99);
+        check(game.getSetupIndex() == Truck::setupCount(), "and above it to the hardest");
+
+        game.selectSetup(1);
+        const double grip = game.getTruck().getSetup().m_grip;
+        game.reset();
+        check(game.getSetupIndex() == 1 && game.getTruck().getSetup().m_grip == grip,
+            "restarting keeps the chosen setup");
+        game.recover();
+        check(game.getSetupIndex() == 1, "and so does recovering");
+    }
+
     std::cout << "Recovery" << std::endl;
     {
         Game game;
         run(game, 3.0, drive(1.0, 0.0, 0.0));
         const int scored = game.getScore();
-        const size_t where = game.getProgress();
 
-        // Drop the truck through the ground, as a bad landing used to do
         game.recover();
         check(game.getTruck().up().y > 0.99, "recovery sets the truck upright");
         check(game.getTruck().getSpeed() < 1.0e-9, "recovery brings it to rest");
         check(game.getScore() == scored, "recovery keeps the score");
-        check(game.getProgress() == where, "recovery keeps the lap progress");
+        check(game.getProgress() == 0, "with no gate cleared it returns to the start of the lap");
 
         run(game, 2.0, drive(0.0, 0.0, 0.0));
         const Truck& truck = game.getTruck();
@@ -329,6 +433,69 @@ int main()
         check(bridgeHeight > 7.0, "drives over the bridge");
         check(worstOffset < 2.0, "stays in the middle of the loop and the bridge");
         check(game.getScore() >= 1300, "wreck, jump and loop all score");
+    }
+
+    std::cout << "Crossing a gate" << std::endl;
+    {
+        Game game;
+        const Track& track = game.getTerrain().getTrack();
+        const std::vector<PathPoint>& points = track.getPoints();
+        const size_t gate = track.getCheckpoints().front();
+        const double frame = 1.0 / 60.0;
+        const auto driveOn = [&](double seconds)
+        {
+            game.setControls(drive(1.0, 0.0, 0.0));
+            for (double t = 0.0; t < seconds; t += frame)
+            {
+                game.step(frame);
+            }
+        };
+
+        // Beginning just past the gate: the truck never comes up to it, so it stays uncleared
+        game.startAt(gate + 4);
+        driveOn(5.0);
+        std::cout << "    from past the gate: " << game.getCheckpointsPassed() << " cleared" << std::endl;
+        check(game.getCheckpointsPassed() == 0, "a gate the truck began beyond is not cleared");
+
+        // Beginning short of it and driving through does clear it
+        game.startAt(gate - 15);
+        check(game.getCheckpointsPassed() == 0, "the lap starts again with none cleared");
+        driveOn(6.0);
+        const Vec3 past = game.getTruck().getPosition() - points[gate].m_position;
+        std::cout << "    from before the gate: " << game.getCheckpointsPassed()
+            << " cleared, " << dot(past, points[gate].m_forward) << " m beyond it" << std::endl;
+        check(game.getCheckpointsPassed() == 1, "driving through the gate clears it");
+        check(dot(past, points[gate].m_forward) > 5.0, "having passed the far line");
+    }
+
+    std::cout << "Back to the last checkpoint" << std::endl;
+    {
+        Game game;
+        const Track& track = game.getTerrain().getTrack();
+        const std::vector<PathPoint>& points = track.getPoints();
+        const double frame = 1.0 / 60.0;
+
+        run(game, 3.0, drive(1.0, 0.0, 0.0));
+        game.recover();
+        check(length(game.getTruck().getPosition() - track.getStartFinish().m_position) < 3.0,
+            "with no gate cleared, recovery returns to the start and finish line");
+
+        const size_t gate = track.getCheckpoints().front();
+        game.startAt(gate - 15);
+        game.setControls(drive(1.0, 0.0, 0.0));
+        for (double t = 0.0; t < 6.0; t += frame)
+        {
+            game.step(frame);
+        }
+        check(game.getCheckpointsPassed() == 1, "the first gate is cleared");
+
+        game.recover();
+        const Vec3 offset = game.getTruck().getPosition() - points[gate].m_position;
+        std::cout << "    back at " << std::fabs(dot(offset, points[gate].m_forward)) << " m from the gate"
+            << std::endl;
+        check(std::fabs(dot(offset, points[gate].m_forward)) < 1.0
+            && std::fabs(dot(offset, points[gate].m_cross)) < 1.0, "recovery returns to the gate it cleared");
+        check(game.getCheckpointsPassed() == 1, "and the gate stays cleared");
     }
 
     std::cout << "Lap begun partway round" << std::endl;

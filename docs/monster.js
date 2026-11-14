@@ -41,6 +41,7 @@
     };
     let resetRequested = false;
     let recoverRequested = false;
+    let setupRequested = 0;
 
     window.addEventListener("keydown", function (event) {
         if (keyMap[event.code]) {
@@ -48,6 +49,9 @@
             event.preventDefault();
         } else if (event.code === "KeyR") {
             resetRequested = true;
+        } else if (/^Digit[1-9]$/.test(event.code)) {
+            setupRequested = Number(event.code.slice(5));
+            event.preventDefault();
         } else if (event.code === "Space" || event.code === "Enter") {
             recoverRequested = true;
             event.preventDefault();
@@ -165,6 +169,10 @@
                 recoverRequested = false;
                 game.monster_recover();
             }
+            if (setupRequested > 0) {
+                game.monster_select_setup(setupRequested);
+                setupRequested = 0;
+            }
             game.monster_set_controls(keys.gas ? 1.0 : 0.0, keys.brake ? 1.0 : 0.0,
                 (keys.right ? 1.0 : 0.0) - (keys.left ? 1.0 : 0.0));
             game.monster_step(elapsed);
@@ -183,7 +191,9 @@
             const fields = readString(game, game.monster_hud()).split("|");
             hud.speed.innerHTML = fields[0] + " km/h<br>LAP " + fields[4] + "&nbsp; " + fields[5] + " s" +
                 (Number(fields[6]) > 0.0 ? "<br>BEST LAP " + fields[6] + " s" : "") +
-                "<br>CP " + fields[7] + "/" + fields[8];
+                "<br>CHECKPOINT " + fields[7] + "/" + fields[8] +
+                "<br>TYRES " + fields[9] + " " + fields[10] +
+                "<br>grip " + fields[11] + " / top " + fields[12] + " km/h";
             hud.score.innerHTML = "SCORE " + fields[1] + "<br>BEST " + fields[2];
             hud.message.textContent = fields[3] || "";
 

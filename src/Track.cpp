@@ -19,8 +19,7 @@ Track::Track()
     , m_bridgeRamp(50.0)
     , m_bridgeDeck(12.0)
     , m_tunnelHalf(9.0)
-    , m_checkpointCount(5)
-    , m_firstCheckpoint(30.0)
+    , m_checkpointCount(4)
     , m_gateMargin(0.8)
     , m_gateClearance(8.0)
     , m_cursor(-5.0, 0.0, 0.0)
@@ -80,18 +79,18 @@ bool Track::canCarryGate(size_t index) const
         });
 }
 
-// The first gate sits just past the start line and the rest are spread evenly over the lap.
-// Each one then moves to the nearest piece of road that can carry it.
+// The gates are spread evenly over the lap, between one crossing of the start line and the
+// next. Each one then moves to the nearest piece of road that can carry it.
 void Track::chooseCheckpoints()
 {
-    const double spacing = (getLength() - m_firstCheckpoint) / m_checkpointCount;
+    const double spacing = getLength() / (m_checkpointCount + 1);
     const size_t none = m_points.size();
 
     m_checkpoints.clear();
     m_checkpoints.reserve(m_checkpointCount);
     for (size_t i = 0; i < m_checkpointCount; ++i)
     {
-        const double target = m_firstCheckpoint + i * spacing;
+        const double target = spacing * (i + 1);
         size_t best = none;
         for (size_t index = 0; index + 1 < m_points.size(); ++index)
         {

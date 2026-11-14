@@ -9,6 +9,25 @@
 #include <algorithm>
 #include <cmath>
 
+namespace
+{
+    // Struct NamedSetup: one entry of the tyre range offered to the player
+    struct NamedSetup
+    {
+        const char* m_name;
+        Truck::Setup m_setup;
+    };
+
+    //                                         grip    top    slip
+    const NamedSetup g_setups[] = {
+        { "SOFT",        { 1.18,  34.0,  0.75 } },
+        { "MEDIUM SOFT", { 1.14,  37.0,  0.82 } },
+        { "STANDARD",    { 1.10,  40.0,  0.90 } },
+        { "MEDIUM HARD", { 0.98,  44.0,  1.05 } },
+        { "HARD",        { 0.85,  48.0,  1.25 } }
+    };
+}
+
 // Struct Wheel
 Wheel::Wheel(const Vec3& attach, bool steered)
     :
@@ -52,11 +71,9 @@ Truck::Truck()
     , m_spokeSpread(60.0 * M_PI / 180.0)
     , m_maxCompression(0.9)
     , m_rayMargin(0.5)
-    , m_grip(1.10)
-    , m_slipSaturation(0.9)  // lateral slip speed at which the tyre reaches full grip
+    , m_setup(setupAt(3))
     , m_driveForce(8000.0)
     , m_brakeForce(9000.0)
-    , m_topSpeed(40.0)
     , m_reverseSpeed(12.0)
     , m_rollingDrag(40.0)
     , m_maxSteer(0.5)
@@ -101,6 +118,40 @@ Truck::Truck()
 double Truck::getRideHeight() const
 {
     return m_wheelRadius + m_suspensionLength - m_wheels.front().m_attach.y;
+}
+
+int Truck::setupCount()
+{
+    return (int) (sizeof(g_setups) / sizeof(g_setups[0]));
+}
+
+Truck::Setup Truck::setupAt(int index)
+{
+    require(index >= 1 && index <= setupCount(), "Truck::setupAt: no such tyre setup");
+    return g_setups[index - 1].m_setup;
+}
+
+const char* Truck::setupName(int index)
+{
+    require(index >= 1 && index <= setupCount(), "Truck::setupName: no such tyre setup");
+    return g_setups[index - 1].m_name;
+}
+
+double Truck::minGrip()
+{
+    return 0.60;
+}
+
+// Measured: a full lock corner above roughly 1.22 trips the truck instead of gripping
+double Truck::maxGrip()
+{
+    return 1.25;
+}
+
+void Truck::setSetup(const Setup& setup)
+{
+    m_setup = setup;
+    m_setup.m_grip = clamp(setup.m_grip, minGrip(), maxGrip());
 }
 
 void Truck::reset(const Vec3& position)
@@ -221,7 +272,7 @@ void Truck::wheelForces(double dt, const Controls& controls, Terrain& terrain, V
             rollSpeed = dot(velocity, along);
             const double slipSpeed = dot(velocity, across);
 
-            double drive = throttle * m_driveForce * std::max(0.0, 1.0 - rollSpeed / m_topSpeed);
+            double drive = throttle * m_driveForce * std::max(0.0, 1.0 - rollSpeed / m_setup.m_topSpeed);
             if (brake > 0.0)
             {
                 if (rollSpeed > 0.5)
@@ -234,9 +285,9 @@ void Truck::wheelForces(double dt, const Controls& controls, Terrain& terrain, V
                 }
             }
             drive -= m_rollingDrag * rollSpeed;
-            double side = -m_grip * load * clamp(slipSpeed / m_slipSaturation, -1.0, 1.0);
+            double side = -m_setup.m_grip * load * clamp(slipSpeed / m_setup.m_slipSaturation, -1.0, 1.0);
 
-            const double limit = m_grip * load;
+            const double limit = m_setup.m_grip * load;
             const double demand = std::sqrt(drive*drive + side*side);
             if (demand > limit)
             {
@@ -260,7 +311,7 @@ void Truck::wheelForces(double dt, const Controls& controls, Terrain& terrain, V
         }
         else
         {
-            const double freeRate = (throttle - brake) * m_topSpeed / m_wheelRadius;
+            const double freeRate = (throttle - brake) * m_setup.m_topSpeed / m_wheelRadius;
             wheel.m_spinRate += (freeRate - wheel.m_spinRate) * std::min(1.0, 3.0 * dt);
         }
         wheel.m_spin += wheel.m_spinRate * dt;

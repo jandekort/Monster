@@ -7,7 +7,53 @@
 #include "Game.h"
 
 #include <algorithm>
+#include <cstdio>
+#include <cstring>
+#include <iterator>
 #include <cmath>
+
+namespace
+{
+    // Struct Glyph: one character of the banner font, five pixels across and seven down. In each
+    // row the highest of the five bits is the leftmost pixel. Only the characters the gates use
+    // are carried.
+    struct Glyph
+    {
+        char m_character;
+        unsigned char m_rows[7];
+    };
+
+    const Glyph g_font[] = {
+        { ' ', { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 } },
+        { '/', { 0x01, 0x01, 0x02, 0x04, 0x08, 0x10, 0x10 } },
+        { '0', { 0x0E, 0x11, 0x13, 0x15, 0x19, 0x11, 0x0E } },
+        { '1', { 0x04, 0x0C, 0x04, 0x04, 0x04, 0x04, 0x0E } },
+        { '2', { 0x0E, 0x11, 0x01, 0x02, 0x04, 0x08, 0x1F } },
+        { '3', { 0x1F, 0x02, 0x04, 0x02, 0x01, 0x11, 0x0E } },
+        { '4', { 0x02, 0x06, 0x0A, 0x12, 0x1F, 0x02, 0x02 } },
+        { '5', { 0x1F, 0x10, 0x1E, 0x01, 0x01, 0x11, 0x0E } },
+        { '6', { 0x06, 0x08, 0x10, 0x1E, 0x11, 0x11, 0x0E } },
+        { '7', { 0x1F, 0x01, 0x02, 0x04, 0x08, 0x08, 0x08 } },
+        { '8', { 0x0E, 0x11, 0x11, 0x0E, 0x11, 0x11, 0x0E } },
+        { '9', { 0x0E, 0x11, 0x11, 0x0F, 0x01, 0x02, 0x0C } },
+        { 'A', { 0x0E, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11 } },
+        { 'F', { 0x1F, 0x10, 0x10, 0x1E, 0x10, 0x10, 0x10 } },
+        { 'H', { 0x11, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11 } },
+        { 'I', { 0x1F, 0x04, 0x04, 0x04, 0x04, 0x04, 0x1F } },
+        { 'N', { 0x11, 0x19, 0x15, 0x13, 0x11, 0x11, 0x11 } },
+        { 'R', { 0x1E, 0x11, 0x11, 0x1E, 0x14, 0x12, 0x11 } },
+        { 'S', { 0x0F, 0x10, 0x10, 0x0E, 0x01, 0x01, 0x1E } },
+        { 'T', { 0x1F, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04 } }
+    };
+
+    const unsigned char* glyphFor(char character)
+    {
+        const auto found = std::find_if(std::begin(g_font), std::end(g_font),
+            [&](const Glyph& glyph) { return glyph.m_character == character; });
+        require(found != std::end(g_font), "Scene: the banner font has no such character");
+        return found->m_rows;
+    }
+}
 
 // Class ChaseCamera
 ChaseCamera::ChaseCamera()
@@ -71,6 +117,9 @@ Scene::Scene()
     , m_poleHalfWidth(0.22)
     , m_bannerHalfDepth(0.14)
     , m_digitHeight(1.3)
+    , m_labelHeight(0.75)
+    , m_glyphColumns(5)
+    , m_glyphRows(7)
     , m_treeSpacing(24.0)
     , m_treeClearance(14.0)
     , m_planted(false)
@@ -193,94 +242,97 @@ void Scene::addMarkings(const Track& track)
     }
 }
 
-// A numbered gate at each checkpoint: two poles outside the road edge and a banner across it
+// A gate at the start and finish line and at each numbered checkpoint
 void Scene::addCheckpoints(const Track& track)
 {
-    const Color pole(0.93f, 0.93f, 0.88f);
-    const Color banner(0.10f, 0.22f, 0.48f);
-    const Color digits(1.00f, 0.84f, 0.16f);
-    const Vec3 up(0.0, 1.0, 0.0);
+    const Color checkpoint(0.10f, 0.22f, 0.48f);
+    const Color startFinish(0.58f, 0.11f, 0.13f);
     const std::vector<PathPoint>& points = track.getPoints();
     const double halfWidth = track.getGateHalfWidth();
-    const double bannerHalfHeight = 0.5 * (m_gateHeight - m_gateBanner);
 
+    addGate(track.getStartFinish(), halfWidth, startFinish, "START / FINISH", m_labelHeight);
     for (size_t i = 0; i < track.getCheckpoints().size(); ++i)
     {
-        const PathPoint& point = points[track.getCheckpoints()[i]];
-        const Vec3& f = point.m_forward;
-        const Vec3& cross = point.m_cross;
-        const Vec3 base = point.m_position;
-
-        for (double side : { -1.0, 1.0 })
-        {
-            m_mesh.addBox(base + cross * (side * halfWidth) + up * (0.5 * m_gateHeight), f, up, cross,
-                Vec3(m_poleHalfWidth, 0.5 * m_gateHeight, m_poleHalfWidth), pole);
-        }
-
-        const Vec3 middle = base + up * (m_gateBanner + bannerHalfHeight);
-        m_mesh.addBox(middle, f, up, cross, Vec3(m_bannerHalfDepth, bannerHalfHeight, halfWidth), banner);
-
-        // The number faces the oncoming truck, which reads it with the road's right hand to its right
-        addNumber(middle - f * (m_bannerHalfDepth + 0.03), cross, up, m_digitHeight, (int) i + 1, digits);
+        char label[12];
+        std::snprintf(label, sizeof(label), "%d", (int) i + 1);
+        addGate(points[track.getCheckpoints()[i]], halfWidth, checkpoint, label, m_digitHeight);
     }
 }
 
-void Scene::addNumber(const Vec3& center, const Vec3& right, const Vec3& up, double height, int value,
-    const Color& color)
+// Two poles outside the road edge and a banner across it, carrying a label
+void Scene::addGate(const PathPoint& point, double halfWidth, const Color& banner, const char* label,
+    double textHeight)
 {
-    require(value >= 0, "Scene::addNumber: value must not be negative");
+    const Color pole(0.93f, 0.93f, 0.88f);
+    const Color lettering(1.00f, 0.88f, 0.30f);
+    const Vec3 up(0.0, 1.0, 0.0);
+    const Vec3& f = point.m_forward;
+    const Vec3& across = point.m_cross;
+    const double bannerHalfHeight = 0.5 * (m_gateHeight - m_gateBanner);
 
-    std::vector<int> digits;
-    for (int rest = value; digits.empty() || rest > 0; rest /= 10)
+    for (double side : { -1.0, 1.0 })
     {
-        digits.push_back(rest % 10);
+        m_mesh.addBox(point.m_position + across * (side * halfWidth) + up * (0.5 * m_gateHeight),
+            f, up, across, Vec3(m_poleHalfWidth, 0.5 * m_gateHeight, m_poleHalfWidth), pole);
     }
 
-    const double advance = 0.85 * height;
-    const double first = -0.5 * advance * (digits.size() - 1);
-    for (size_t i = 0; i < digits.size(); ++i)
+    const Vec3 middle = point.m_position + up * (m_gateBanner + bannerHalfHeight);
+    m_mesh.addBox(middle, f, up, across, Vec3(m_bannerHalfDepth, bannerHalfHeight, halfWidth), banner);
+
+    // The label faces the oncoming truck, which reads it with the road's right hand to its right
+    addText(middle - f * (m_bannerHalfDepth + 0.03), across, up, textHeight, label, lettering);
+}
+
+void Scene::addText(const Vec3& center, const Vec3& right, const Vec3& up, double height,
+    const char* text, const Color& color)
+{
+    const size_t count = std::strlen(text);
+    require(count > 0, "Scene::addText: nothing to draw");
+
+    const double pixel = height / m_glyphRows;
+    const double advance = m_glyphColumns + 1.0; // one blank pixel between characters
+    const double width = advance * count - 1.0;
+    for (size_t i = 0; i < count; ++i)
     {
-        addDigit(center + right * (first + advance * (digits.size() - 1 - i)), right, up, height,
-            digits[i], color);
+        const double offset = advance * i + 0.5 * m_glyphColumns - 0.5 * width;
+        addGlyph(center + right * (offset * pixel), right, up, pixel, glyphFor(text[i]), color);
     }
 }
 
-// Seven segment digit, drawn as bars in the plane spanned by right and up
-void Scene::addDigit(const Vec3& center, const Vec3& right, const Vec3& up, double height, int digit,
-    const Color& color)
+void Scene::addGlyph(const Vec3& center, const Vec3& right, const Vec3& up, double pixel,
+    const unsigned char* rows, const Color& color)
 {
-    require(digit >= 0 && digit <= 9, "Scene::addDigit: not a digit");
-
-    //                                 0     1     2     3     4     5     6     7     8     9
-    static const int lit[10] = { 0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F };
-    const double h = 0.5 * height;
-    const double w = 0.30 * height;
-    const double t = 0.100 * height;
-
-    // A one is drawn down the middle: a seven segment one sits on the right of its cell, which
-    // beside no other digit reads as a stray mark rather than a numeral
-    const double lean = digit == 1 ? -w : 0.0;
     const Vec3 normal = normalize(cross(right, up));
-
-    const auto bar = [&](int segment, double cx, double cy, double halfX, double halfY)
+    const auto isLit = [&](int row, int column)
     {
-        if ((lit[digit] & segment) == 0)
-        {
-            return;
-        }
-        const Vec3 middle = center + right * cx + up * cy;
-        const Vec3 x = right * halfX;
-        const Vec3 y = up * halfY;
-        m_mesh.addQuad(middle - x - y, middle + x - y, middle + x + y, middle - x + y, color, normal);
+        return (rows[row] & (1 << (m_glyphColumns - 1 - column))) != 0;
     };
 
-    bar(0x01,  0.0,      h,  w, t);       // a, top
-    bar(0x02,  w + lean,  0.5*h,  t, 0.5 * h); // b, upper right
-    bar(0x04,  w + lean, -0.5*h,  t, 0.5 * h); // c, lower right
-    bar(0x08,  0.0,     -h,  w, t);       // d, bottom
-    bar(0x10,   -w, -0.5*h,  t, 0.5 * h); // e, lower left
-    bar(0x20,   -w,  0.5*h,  t, 0.5 * h); // f, upper left
-    bar(0x40,  0.0,    0.0,  w, t);       // g, middle
+    for (int row = 0; row < m_glyphRows; ++row)
+    {
+        for (int column = 0; column < m_glyphColumns; ++column)
+        {
+            if (!isLit(row, column))
+            {
+                continue;
+            }
+
+            // A run of lit pixels becomes one quad, so a solid bar is a single face
+            int end = column;
+            while (end + 1 < m_glyphColumns && isLit(row, end + 1))
+            {
+                ++end;
+            }
+            const Vec3 middle = center
+                + right * ((0.5 * (column + end + 1) - 0.5 * m_glyphColumns) * pixel)
+                + up * ((0.5 * m_glyphRows - row - 0.5) * pixel);
+            const Vec3 halfX = right * (0.5 * (end - column + 1) * pixel);
+            const Vec3 halfY = up * (0.5 * pixel);
+            m_mesh.addQuad(middle - halfX - halfY, middle + halfX - halfY,
+                middle + halfX + halfY, middle - halfX + halfY, color, normal);
+            column = end;
+        }
+    }
 }
 
 // Trees on a jittered grid, kept clear of the road

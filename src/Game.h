@@ -17,10 +17,11 @@ public:
 
     // Mutator
     void reset();
-    void recover(); // set the truck upright on the track where it last was
+    void recover(); // set the truck upright at the last checkpoint it cleared
     void startAt(size_t pointIndex); // begin a fresh lap from a given point of the circuit
     void step(double elapsed); // advances the simulation in fixed steps
     void setControls(const Controls& controls) { m_controls = controls; }
+    void selectSetup(int index); // tyre setup, 1 is the softest; out of range values are clamped
 
     // Accessor
     const Truck& getTruck() const { return m_truck; }
@@ -35,17 +36,20 @@ public:
     int getLap() const { return m_lap; }              // 1->first lap
     double getLapTime() const { return m_lapTime; }
     double getBestLapTime() const { return m_bestLapTime; } // negative->no lap finished yet
+    int getSetupIndex() const { return m_setupIndex; }
+    const char* getSetupName() const { return Truck::setupName(m_setupIndex); }
     int getCheckpointsPassed() const;
     int getCheckpointCount() const;
     bool lapIsComplete() const; // every checkpoint of the current lap has been passed
     // "speed|score|best|message|lap|lap time|best lap time|checkpoints passed|checkpoints"
+    // "|tyre setup|setup name|grip|top speed in km/h"
     std::string hudString() const;
 
 private:
     void placeOnTrack(size_t index); // upright and at rest on the centreline
     void updateProgress();
     void updateStunts();
-    void markCheckpoints(size_t from, size_t to);
+    void updateCheckpoints();
     void clearCheckpoints();
 
     Truck m_truck;
@@ -66,17 +70,29 @@ private:
     int m_loopPoints;         // points for driving through the loop
     double m_gateRadius;      // a track point counts as reached within this distance [m]
     size_t m_gateWindow;      // track points searched ahead of the last one reached
+    double m_gateDepth;       // how far either side of a gate its two lines lie [m]
+    double m_gateReach;       // the truck must be this near a gate to be crossing it [m]
 
     double m_tippedClock;
     double m_wreckedClock;    // seconds since the truck was wrecked
     bool m_wrecked;           // true->truck is stuck on its side or roof
     double m_crushClock;      // seconds since the wreck was flattened, negative->not yet
     int m_best;
+    int m_setupIndex;         // kept across reset(), so a restart does not undo the choice
     size_t m_progress;
     int m_lap;
     double m_lapTime;
     double m_bestLapTime;
-    std::vector<bool> m_checkpointsPassed; // one flag per checkpoint, cleared every lap
+    // How far the truck has got with a gate. It has to come up to the gate and then leave it on
+    // the far side, so that driving past the back of one does not clear it.
+    enum class Crossing
+    {
+        Away,
+        Approached,
+        Cleared
+    };
+
+    std::vector<Crossing> m_crossing; // one per gate, given up every lap
     double m_lapClock;        // seconds since the last lap was finished, negative->none yet
     double m_missedClock;     // seconds since a lap was rejected, negative->none yet
     double m_lastLapTime;

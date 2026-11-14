@@ -28,7 +28,7 @@ game.monster_init();
 game.monster_set_controls(1.0, 0.0, 0.0);
 let sawAir = false;
 let sawLanding = false;
-for (let frame = 0; frame < 60 * 11; ++frame) {
+for (let frame = 0; frame < 60 * 15; ++frame) {
     game.monster_step(1.0 / 60.0);
     const message = hud()[3];
     sawAir = sawAir || message.startsWith("AIR");
@@ -44,8 +44,8 @@ check(count > 1000 && count % 3 === 0, "scene has triangles");
 check(vertices.every(Number.isFinite), "vertices are finite");
 check(matrix.every(Number.isFinite), "view projection is finite");
 check(Number(fields[1]) >= 500, "crushing and jumping score points");
-check(fields.length === 9 && fields[4] === "1" && Number(fields[5]) > 10.0, "lap and lap time are reported");
-check(Number(fields[7]) >= 1 && fields[8] === "5", "checkpoints are counted");
+check(fields.length === 13 && fields[4] === "1" && Number(fields[5]) > 10.0, "lap and lap time are reported");
+check(Number(fields[7]) >= 1 && fields[8] === "4", "a gate driven through is counted");
 check(sawAir, "truck gets airborne");
 check(sawLanding, "landing is rated");
 
@@ -54,7 +54,16 @@ game.monster_recover();
 game.monster_step(1.0 / 60.0);
 check(Number(hud()[1]) === beforeRecovery, "recovery keeps the score");
 
+check(hud()[9] === "3" && hud()[10] === "STANDARD", "the standard tyre setup is the default");
+game.monster_select_setup(1);
+game.monster_step(1.0 / 60.0);
+check(hud()[9] === "1" && Number(hud()[11]) > 1.1, "a softer setup can be selected");
+game.monster_select_setup(99);
+game.monster_step(1.0 / 60.0);
+check(hud()[9] === String(5), "an out of range setup is clamped");
+
 game.monster_reset();
+check(hud()[9] === "5", "reset keeps the tyre setup");
 check(hud()[1] === "0" && Number(hud()[2]) >= 500, "reset keeps the best score");
 
 process.exit(failures === 0 ? 0 : 1);
