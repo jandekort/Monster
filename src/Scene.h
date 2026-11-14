@@ -58,7 +58,7 @@ public:
     const Mesh& getMesh() const { return m_mesh; }
 
 private:
-    void addGround(const Vec3& eye);
+    void addGround(const Terrain& terrain, const Vec3& eye);
     void addFaces(const Terrain& terrain);
     void addMarkings(const Terrain& terrain);
     void addCheckpoints(const Track& track);

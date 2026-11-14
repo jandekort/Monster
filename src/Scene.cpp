@@ -130,7 +130,7 @@ Scene::Scene()
 void Scene::build(const Game& game, const Vec3& eye)
 {
     m_mesh.clear();
-    addGround(eye);
+    addGround(game.getTerrain(), eye);
     addFaces(game.getTerrain());
     addMarkings(game.getTerrain());
     addCheckpoints(game.getTerrain().getTrack());
@@ -146,19 +146,41 @@ void Scene::build(const Game& game, const Vec3& eye)
     }
 }
 
-void Scene::addGround(const Vec3& eye)
+// The grass is laid in tiles, with the footprint of the sunken dirt road cut out of them: the
+// dirt road has its own tiles, and grass drawn over the hole would hide it entirely.
+void Scene::addGround(const Terrain& terrain, const Vec3& eye)
 {
     const Vec3 upward(0.0, 1.0, 0.0);
     const Color light(0.30f, 0.62f, 0.26f);
     const Color dark(0.26f, 0.56f, 0.23f);
     const Color distant(0.28f, 0.59f, 0.245f);
 
-    { // Far field, slightly below the tiles
+    // The dirt road lies square to the world, so its footprint is a rectangle in x and z
+    const DirtRoad& dirt = terrain.getDirtRoad();
+    const double holeX = std::fabs(dirt.m_cross.x) * dirt.halfWidth()
+        + std::fabs(dirt.m_forward.x) * dirt.m_halfLength;
+    const double holeZ = std::fabs(dirt.m_cross.z) * dirt.halfWidth()
+        + std::fabs(dirt.m_forward.z) * dirt.m_halfLength;
+    const double hx0 = dirt.m_centre.x - holeX;
+    const double hx1 = dirt.m_centre.x + holeX;
+    const double hz0 = dirt.m_centre.z - holeZ;
+    const double hz1 = dirt.m_centre.z + holeZ;
+
+    { // Far field, below the deepest the ground is cut away, so it never shows through the hole
         const double reach = 5000.0;
-        const double y = -0.5;
+        const double y = -dirt.m_depth - 1.0;
         m_mesh.addQuad(Vec3(eye.x - reach, y, eye.z - reach), Vec3(eye.x + reach, y, eye.z - reach),
             Vec3(eye.x + reach, y, eye.z + reach), Vec3(eye.x - reach, y, eye.z + reach), distant, upward);
     }
+
+    const auto patch = [&](double x0, double x1, double z0, double z1, const Color& color)
+    {
+        if (x1 - x0 > 1.0e-9 && z1 - z0 > 1.0e-9)
+        {
+            m_mesh.addQuad(Vec3(x0, 0.0, z0), Vec3(x1, 0.0, z0), Vec3(x1, 0.0, z1), Vec3(x0, 0.0, z1),
+                color, upward);
+        }
+    };
 
     { // Checkered tiles around the camera give a sense of speed
         const long cx = std::lround(std::floor(eye.x / m_tileSize));
@@ -167,11 +189,26 @@ void Scene::addGround(const Vec3& eye)
         {
             for (long iz = cz - m_tileRange; iz <= cz + m_tileRange; ++iz)
             {
-                const double x = ix * m_tileSize;
-                const double z = iz * m_tileSize;
-                m_mesh.addQuad(Vec3(x, 0.0, z), Vec3(x + m_tileSize, 0.0, z),
-                    Vec3(x + m_tileSize, 0.0, z + m_tileSize), Vec3(x, 0.0, z + m_tileSize),
-                    ((ix + iz) & 1) != 0 ? light : dark, upward);
+                const double x0 = ix * m_tileSize;
+                const double z0 = iz * m_tileSize;
+                const double x1 = x0 + m_tileSize;
+                const double z1 = z0 + m_tileSize;
+                const Color& color = ((ix + iz) & 1) != 0 ? light : dark;
+
+                // What the hole takes out of this tile, if anything
+                const double ax = std::max(x0, hx0);
+                const double bx = std::min(x1, hx1);
+                const double az = std::max(z0, hz0);
+                const double bz = std::min(z1, hz1);
+                if (ax >= bx || az >= bz)
+                {
+                    patch(x0, x1, z0, z1, color);
+                    continue;
+                }
+                patch(x0, ax, z0, z1, color); // the four pieces left around the hole
+                patch(bx, x1, z0, z1, color);
+                patch(ax, bx, z0, az, color);
+                patch(ax, bx, bz, z1, color);
             }
         }
     }
