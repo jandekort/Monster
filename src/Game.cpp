@@ -373,7 +373,13 @@ void Game::updateProgress(Racer& racer)
         }
     }
 
-    if (racer.m_progress == last)
+    // The lap is credited on crossing the line, not on touching the last track point: taken wide
+    // or at speed, the truck can pass the line without ever coming near that one point
+    const PathPoint& line = m_terrain.getTrack().getStartFinish();
+    const bool roundAgain = racer.m_progress + m_gateWindow >= last
+        && dot(racer.m_truck.getPosition() - line.m_position, line.m_forward) > 0.0;
+
+    if (racer.m_progress == last || roundAgain)
     {
         const bool complete = racer.lapIsComplete();
         racer.m_progress = 0;
