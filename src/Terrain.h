@@ -1,0 +1,143 @@
+// Monster - the collision world: ground plane, road surfaces, ramps and a crushable wreck
+// Author: Jan de Kort
+// Created: 2026-11-14
+#pragma once
+
+#include "Math.h"
+#include "Track.h"
+
+#include <array>
+#include <vector>
+
+// Struct Face: a quad of the world, used for drawing and (when solid) for collision
+struct Face
+{
+    enum class Surface
+    {
+        Road,
+        Stripe,   // edge marking on raised road
+        Deck,     // top of a jump ramp
+        Flank,    // side of a jump ramp
+        Concrete  // bridge walls and underside
+    };
+
+    Vec3 m_a;
+    Vec3 m_b;
+    Vec3 m_c;
+    Vec3 m_d;
+    Vec3 m_normal;
+    Surface m_surface = Surface::Road;
+    bool m_solid = true; // true->collides, false->drawn only
+
+    Face() = default;
+    Face(const Vec3& a, const Vec3& b, const Vec3& c, const Vec3& d, Surface surface, bool solid);
+};
+
+// Struct Hit: result of a ray cast
+struct Hit
+{
+    double m_distance = 0.0;
+    Vec3 m_point;
+    Vec3 m_normal;        // unit, facing the ray origin
+    bool m_wreck = false; // true->the ray hit the crushable wreck
+};
+
+// Struct Slab: a jump ramp piece on the start straight, linear in x
+struct Slab
+{
+    double m_x0 = 0.0;
+    double m_x1 = 0.0;
+    double m_h0 = 0.0; // height at m_x0
+    double m_h1 = 0.0; // height at m_x1
+    double m_halfWidth = 0.0;
+
+    Slab(double x0, double x1, double h0, double h1, double halfWidth);
+};
+
+// Class Wreck: an old car lying across the road that flattens under load
+class Wreck
+{
+public:
+    Wreck(double x, double z);
+
+    // Mutator
+    void applyLoad(double load, double dt);
+    void reset() { m_crush = 0.0; }
+
+    // Accessor
+    std::array<Face, 3> faces() const; // roof and the two sloping flanks
+    double getCrush() const { return m_crush; } // 0->intact, 1->flat
+    double getCurrentHeight() const;
+    double getReach() const; // radius around (x, z) outside which nothing can hit
+    double getX() const { return m_x; }
+    double getZ() const { return m_z; }
+    double getHalfWidth() const { return m_halfWidth; }
+    double getHalfLength() const { return m_halfLength; }
+    double getSlopeRun() const { return m_slopeRun; }
+
+private:
+    double m_x;
+    double m_z;
+    double m_halfWidth;       // along the road (x)
+    double m_halfLength;      // across the road (z)
+    double m_slopeRun;        // run of the sloped flanks in x
+    double m_height;          // intact height
+    double m_minFraction;     // remaining height fraction when flat
+    double m_loadThreshold;   // loads below this do not deform [N]
+    double m_crushResistance; // impulse needed to flatten [N s]
+    double m_crush;
+};
+
+// Class Terrain
+class Terrain
+{
+public:
+    Terrain();
+
+    // Nearest surface along a ray; direction must be a unit vector
+    bool raycast(const Vec3& origin, const Vec3& direction, double reach, Hit& hit) const;
+
+    // Mutator
+    void crush(double load, double dt) { m_wreck.applyLoad(load, dt); }
+    void reset() { m_wreck.reset(); }
+
+    // Accessor
+    const Track& getTrack() const { return m_track; }
+    const std::vector<Face>& getFaces() const { return m_faces; }
+    const std::vector<Slab>& getSlabs() const { return m_slabs; }
+    const Wreck& getWreck() const { return m_wreck; }
+
+private:
+    // Struct Triangle: precomputed for the ray test
+    struct Triangle
+    {
+        Vec3 m_a;
+        Vec3 m_ab;
+        Vec3 m_ac;
+        Vec3 m_normal;
+    };
+
+    void buildRoad();
+    void buildSlabs();
+    void buildGrid();
+    void addFace(const Face& face) { m_faces.push_back(face); }
+    static bool intersect(const Triangle& triangle, const Vec3& origin, const Vec3& direction, double reach, Hit& hit);
+    static Triangle makeTriangle(const Vec3& a, const Vec3& b, const Vec3& c);
+
+    Track m_track;
+    std::vector<Slab> m_slabs;
+    Wreck m_wreck;
+    std::vector<Face> m_faces;
+    std::vector<Triangle> m_triangles;
+
+    // Uniform grid over the solid triangles in the ground plane
+    double m_cellSize;
+    double m_gridX;
+    double m_gridZ;
+    int m_gridColumns;
+    int m_gridRows;
+    std::vector<std::vector<int>> m_cells;
+
+    double m_stripeWidth;   // edge marking on raised road [m]
+    double m_deckThickness; // drawn thickness of the bridge deck [m]
+};

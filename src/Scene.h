@@ -1,0 +1,77 @@
+// Monster - chase camera and scene mesh builder
+// Author: Jan de Kort
+// Created: 2026-11-14
+#pragma once
+
+#include "Math.h"
+#include "Mesh.h"
+
+#include <vector>
+
+class Game;
+class Terrain;
+class Track;
+class Truck;
+class Wreck;
+
+// Class ChaseCamera
+class ChaseCamera
+{
+public:
+    ChaseCamera();
+
+    // Mutator
+    void snap() { m_initialised = false; } // jump to the truck on the next update
+    void update(const Truck& truck, double dt);
+
+    // Accessor
+    Mat4 viewProjection(double aspect) const;
+    const Vec3& getEye() const { return m_eye; }
+
+private:
+    double m_distance;     // behind the truck
+    double m_height;       // above the truck
+    double m_invertedDistance; // fraction of m_distance when the truck is upside down
+    double m_headingRate;  // [1/s]
+    double m_positionRate; // [1/s]
+    double m_fieldOfView;
+    double m_minHeight;    // above the ground
+    double m_near;
+    double m_far;
+    bool m_initialised;    // false->snap on next update
+    Vec3 m_heading;        // smoothed horizontal driving direction
+    Vec3 m_eye;
+    Vec3 m_target;
+};
+
+// Class Scene
+class Scene
+{
+public:
+    Scene();
+
+    // Mutator
+    void build(const Game& game, const Vec3& eye);
+
+    // Accessor
+    const Mesh& getMesh() const { return m_mesh; }
+
+private:
+    void addGround(const Vec3& eye);
+    void addFaces(const Terrain& terrain);
+    void addMarkings(const Track& track);
+    void plantTrees(const Track& track);
+    void addWreck(const Wreck& wreck);
+    void addScenery();
+    void addTruck(const Truck& truck);
+    void addWheel(const Vec3& center, const Vec3& axle, const Vec3& up, double radius, double halfWidth, double spin);
+
+    Mesh m_mesh;
+    double m_tileSize;
+    int m_tileRange;   // tiles drawn in each direction around the camera
+    int m_wheelSides;
+    double m_treeSpacing;
+    double m_treeClearance; // distance kept from the road centre [m]
+    bool m_planted;         // true->m_trees is filled
+    std::vector<Vec3> m_trees; // foot position; y holds the size factor
+};

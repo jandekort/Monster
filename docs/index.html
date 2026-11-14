@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Monster</title>
+<style>
+    html, body { margin: 0; height: 100%; background: #101014; color: #f4f4e8; overflow: hidden;
+                 font-family: "Courier New", monospace; font-weight: bold; }
+    #stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+    #frame { position: relative; }
+    canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
+    .hud { position: absolute; text-shadow: 2px 2px 0 #000; pointer-events: none; }
+    #speed { left: 3%; top: 3%; font-size: 3.2vmin; }
+    #score { right: 3%; top: 3%; font-size: 3.2vmin; text-align: right; }
+    #message { left: 0; right: 0; top: 22%; text-align: center; font-size: 5.5vmin; color: #ffd92e; }
+    #help { left: 0; right: 0; bottom: 3%; text-align: center; font-size: 2vmin; opacity: 0.85; }
+    #error { left: 0; right: 0; top: 45%; text-align: center; font-size: 3vmin; color: #ff6a5a; }
+    .pad { position: absolute; bottom: 4%; display: none; gap: 2vmin; }
+    .pad button { width: 15vmin; height: 15vmin; border-radius: 50%; border: 0.5vmin solid #f4f4e8;
+                  background: rgba(16, 16, 20, 0.45); color: #f4f4e8; font: inherit; font-size: 5vmin;
+                  touch-action: none; user-select: none; -webkit-user-select: none; }
+    #padLeft { left: 3%; }
+    #padRight { right: 3%; }
+    @media (pointer: coarse) { .pad { display: flex; } #help { display: none; } }
+</style>
+</head>
+<body>
+<div id="stage">
+    <div id="frame">
+        <canvas id="canvas" width="640" height="400"></canvas>
+        <div id="speed" class="hud"></div>
+        <div id="score" class="hud"></div>
+        <div id="message" class="hud"></div>
+        <div id="error" class="hud"></div>
+        <div id="help" class="hud">ARROWS / WASD: drive &nbsp; in the air: gas lifts the nose, brake drops it &nbsp; keep the speed up for the loop &nbsp; R: restart</div>
+        <div id="padLeft" class="pad">
+            <button data-key="left">&#9664;</button>
+            <button data-key="right">&#9654;</button>
+        </div>
+        <div id="padRight" class="pad">
+            <button data-key="reset">R</button>
+            <button data-key="brake">&#9660;</button>
+            <button data-key="gas">&#9650;</button>
+        </div>
+    </div>
+</div>
+<script src="monster.js"></script>
+</body>
+</html>
