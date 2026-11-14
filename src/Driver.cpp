@@ -40,7 +40,8 @@ Controls Driver::drive(const Truck& truck, size_t progress, const Track& track) 
     controls.m_throttle = 1.0;
 
     // In the loop and in the air: keep the wheels straight and the throttle open
-    if (truck.up().y < 0.6 || truck.getWheelsOnGround() == 0 || points[here].m_kind == PathPoint::Kind::Loop)
+    if (truck.up().y < 0.6 || truck.getWheelsOnGround() == 0
+        || points[here].m_kind == PathPoint::Kind::Loop || points[here].m_kind == PathPoint::Kind::Gap)
     {
         return controls;
     }
@@ -66,7 +67,8 @@ Controls Driver::drive(const Truck& truck, size_t progress, const Track& track) 
                 limit = std::min(limit, std::sqrt(m_style.m_cornerSpeed*m_style.m_cornerSpeed
                     + 2.0 * m_style.m_braking * distanceAhead(index)));
             }
-            loopAhead = loopAhead || points[index].m_kind == PathPoint::Kind::Loop;
+            loopAhead = loopAhead || points[index].m_kind == PathPoint::Kind::Loop
+                || points[index].m_kind == PathPoint::Kind::Gap;
         }
         const double speed = truck.getSpeed();
         controls.m_throttle = speed < limit ? (loopAhead ? 1.0 : m_style.m_throttleCap) : 0.0;

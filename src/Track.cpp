@@ -19,6 +19,7 @@ Track::Track()
     , m_bridgeRamp(50.0)
     , m_bridgeDeck(12.0)
     , m_tunnelHalf(9.0)
+    , m_bridgeGap(5.0)
     , m_checkpointCount(4)
     , m_gateMargin(0.8)
     , m_gateClearance(8.0)
@@ -109,6 +110,14 @@ void Track::chooseCheckpoints()
     }
 }
 
+const PathPoint& Track::getGapCentre() const
+{
+    const auto found = std::find_if(m_points.begin(), m_points.end(),
+        [](const PathPoint& point) { return point.m_kind == PathPoint::Kind::Gap; });
+    require(found != m_points.end(), "Track::getGapCentre: the bridge has no gap");
+    return *found;
+}
+
 Vec3 Track::heading() const
 {
     return Vec3(std::cos(m_angle), 0.0, std::sin(m_angle));
@@ -184,6 +193,10 @@ void Track::addBridge(double length, double crest)
         if (h > 0.0)
         {
             kind = std::fabs(s - crest) < m_tunnelHalf ? PathPoint::Kind::Bridge : PathPoint::Kind::Embankment;
+        }
+        if (std::fabs(s - crest) < 0.5 * m_bridgeGap)
+        {
+            kind = PathPoint::Kind::Gap; // the deck is missing here
         }
         m_cursor = start + heading() * s;
         addPoint(m_cursor + Vec3(0.0, h, 0.0), forward, rightward(), cross(rightward(), forward), kind, false, step);

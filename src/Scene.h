@@ -60,7 +60,7 @@ public:
 private:
     void addGround(const Vec3& eye);
     void addFaces(const Terrain& terrain);
-    void addMarkings(const Track& track);
+    void addMarkings(const Terrain& terrain);
     void addCheckpoints(const Track& track);
     void addGate(const PathPoint& point, double halfWidth, const Color& banner, const char* label,
         double textHeight);

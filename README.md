@@ -2,7 +2,8 @@
 
 A Stunts-style stunt driving game with a monster truck, written in C++ and
 compiled to WebAssembly. One truck on a figure-eight circuit of about 990 m
-with a row of crushable wrecks, a tunnel, a jump, a loop and a bridge.
+with a row of crushable wrecks, a tunnel, a jump over a sunken dirt road, a
+loop, and a bridge with a hole in it.
 
 ## The race
 
@@ -20,8 +21,10 @@ flattens them.
 ## The circuit
 
 The two straights of the eight cross at different levels. A lap runs: start
-line, tunnel under the bridge, jump, two right-hand bends, loop, another
-right-hand bend, over the bridge, two left-hand bends, the last gate, the row
+line, tunnel under the bridge, the jump over the dirt road, two right-hand
+bends, loop, another
+right-hand bend, over the bridge and its hole, two left-hand bends, the last
+gate, the row
 of wrecks, a last left-hand bend and the run back to the line. The starting grid
 stands on that last straight.
 
@@ -30,6 +33,15 @@ leaves it tangentially: keep the wheels straight and the throttle open and the
 truck comes out in the exit lane. It needs roughly 75 km/h at the entry.
 Track points must be passed in order, so a lap only counts if the loop and the
 bridge are driven.
+
+The bridge deck is missing for five metres over the tunnel, so the bridge has to
+be taken with enough speed to carry across it. A dirt road runs alongside the
+bridge on its right, sunk into the ground; the road out of the tunnel jumps over
+it between the two yellow ramps.
+
+The going differs by surface. The road and the bridge are quickest, the dirt
+road a little slower, and the grass slower still, so cutting a corner costs more
+than it saves.
 
 ## Controls
 

@@ -18,8 +18,12 @@ struct Face
         Stripe,   // edge marking on raised road
         Deck,     // top of a jump ramp
         Flank,    // side of a jump ramp
-        Concrete  // bridge walls and underside
+        Concrete, // bridge walls and underside
+        DirtPale, // the two shades the dirt road is tiled in
+        DirtDark
     };
+
+    static double traction(Surface surface); // 1->tarmac, less->looser going
 
     Vec3 m_a;
     Vec3 m_b;
@@ -39,6 +43,7 @@ struct Hit
     double m_distance = 0.0;
     Vec3 m_point;
     Vec3 m_normal;        // unit, facing the ray origin
+    double m_traction = 1.0; // of the surface struck
     int m_wreck = -1;     // index of the wreck the ray hit, negative->not a wreck
 };
 
@@ -92,6 +97,24 @@ private:
     double m_crush;
 };
 
+// Struct DirtRoad: a sunken dirt track running beside the bridge, which the road from the start
+// line jumps over. Its cross section is a flat floor with a slope up to ground level either side.
+struct DirtRoad
+{
+    Vec3 m_centre;      // on the ground, at the middle of its length
+    Vec3 m_forward;     // along the dirt road
+    Vec3 m_cross;       // across it
+    double m_halfFloor = 4.0;
+    double m_slopeRun = 2.5;  // horizontal run of the banks, each side
+    double m_halfLength = 60.0;
+    double m_endRun = 10.0;   // the ends climb back to ground level over this distance
+    double m_depth = 1.7;
+
+    double halfWidth() const { return m_halfFloor + m_slopeRun; }
+    bool contains(const Vec3& point) const;
+    double height(const Vec3& point) const; // ground level over the dirt road, 0 or below
+};
+
 // Class Terrain
 class Terrain
 {
@@ -110,7 +133,9 @@ public:
     const std::vector<Face>& getFaces() const { return m_faces; }
     const std::vector<Slab>& getSlabs() const { return m_slabs; }
     const std::vector<Wreck>& getWrecks() const { return m_wrecks; }
-    double getCrush() const; // how far through the row of wrecks, 0->all intact, 1->all flat
+    double getCrush() const;
+    const DirtRoad& getDirtRoad() const { return m_dirt; }
+    double groundFloor(const Vec3& point) const; // solid ground under a point, 0 off the dirt road // how far through the row of wrecks, 0->all intact, 1->all flat
 
 private:
     // Struct Triangle: precomputed for the ray test
@@ -120,17 +145,23 @@ private:
         Vec3 m_ab;
         Vec3 m_ac;
         Vec3 m_normal;
+        double m_traction;
     };
 
+    void placeDirtRoad();
+    void buildDirtRoad();
     void placeWrecks();
     void buildRoad();
     void buildSlabs();
     void buildGrid();
     void addFace(const Face& face) { m_faces.push_back(face); }
     static bool intersect(const Triangle& triangle, const Vec3& origin, const Vec3& direction, double reach, Hit& hit);
-    static Triangle makeTriangle(const Vec3& a, const Vec3& b, const Vec3& c);
+    static Triangle makeTriangle(const Vec3& a, const Vec3& b, const Vec3& c, double traction);
 
     Track m_track;
+    DirtRoad m_dirt;
+    double m_dirtOffset;  // from the bridge to the dirt road, to its right [m]
+    double m_dirtTile;    // side of one tile of the dirt road [m]
     std::vector<Slab> m_slabs;
     std::vector<Wreck> m_wrecks;
     size_t m_wreckCount;
@@ -147,6 +178,7 @@ private:
     int m_gridRows;
     std::vector<std::vector<int>> m_cells;
 
+    double m_grassTraction; // the going off the road
     double m_stripeWidth;   // edge marking on raised road [m]
     double m_deckThickness; // drawn thickness of the bridge deck [m]
 };

@@ -22,6 +22,44 @@ Face::Face(const Vec3& a, const Vec3& b, const Vec3& c, const Vec3& d, Surface s
 {
 }
 
+double Face::traction(Surface surface)
+{
+    switch (surface)
+    {
+    case Surface::Road:
+    case Surface::Stripe:
+    case Surface::Deck:
+    case Surface::Flank:
+    case Surface::Concrete:
+        return 1.00;
+    case Surface::DirtPale:
+    case Surface::DirtDark:
+        return 0.86;
+    default:
+        require(false, "Face::traction: unknown surface");
+        return 1.0;
+    }
+}
+
+// Struct DirtRoad
+bool DirtRoad::contains(const Vec3& point) const
+{
+    const Vec3 offset = point - m_centre;
+    return std::fabs(dot(offset, m_cross)) < halfWidth() && std::fabs(dot(offset, m_forward)) < m_halfLength;
+}
+
+double DirtRoad::height(const Vec3& point) const
+{
+    if (!contains(point))
+    {
+        return 0.0;
+    }
+    const Vec3 offset = point - m_centre;
+    const double across = (halfWidth() - std::fabs(dot(offset, m_cross))) / m_slopeRun;
+    const double along = (m_halfLength - std::fabs(dot(offset, m_forward))) / m_endRun;
+    return -m_depth * clamp(std::min(across, along), 0.0, 1.0);
+}
+
 // Struct Slab
 Slab::Slab(double x0, double x1, double h0, double h1, double halfWidth)
     :
@@ -94,6 +132,9 @@ void Wreck::applyLoad(double load, double dt)
 Terrain::Terrain()
     :
     m_track()
+    , m_dirt()
+    , m_dirtOffset(30.5)
+    , m_dirtTile(3.5)
     , m_slabs()
     , m_wrecks()
     , m_wreckCount(3)
@@ -107,19 +148,66 @@ Terrain::Terrain()
     , m_gridColumns(0)
     , m_gridRows(0)
     , m_cells()
+    , m_grassTraction(0.70)
     , m_stripeWidth(0.5)
     , m_deckThickness(0.6)
 {
     const double rampHalfWidth = 4.5;
     m_slabs.reserve(3);
-    m_slabs.push_back(Slab( 90.0, 104.0, 0.0, 3.5, rampHalfWidth)); // take-off ramp
-    m_slabs.push_back(Slab(115.0, 118.0, 0.0, 2.5, rampHalfWidth)); // front of the landing
-    m_slabs.push_back(Slab(118.0, 140.0, 2.5, 0.0, rampHalfWidth)); // landing slope
+    m_slabs.push_back(Slab( 71.0,  86.0, 0.0, 3.9, rampHalfWidth)); // take-off ramp
+    m_slabs.push_back(Slab( 99.0, 102.0, 0.0, 2.5, rampHalfWidth)); // front of the landing
+    m_slabs.push_back(Slab(102.0, 124.0, 2.5, 0.0, rampHalfWidth)); // landing slope
 
+    placeDirtRoad();
     placeWrecks();
     buildRoad();
+    buildDirtRoad();
     buildSlabs();
     buildGrid();
+}
+
+// The dirt road runs alongside the bridge, to its right as the bridge is driven, and the road
+// out of the tunnel jumps over it between the two ramps
+void Terrain::placeDirtRoad()
+{
+    const PathPoint& gap = m_track.getGapCentre();
+    m_dirt.m_forward = gap.m_forward;
+    m_dirt.m_cross = gap.m_cross;
+    m_dirt.m_centre = Vec3(gap.m_position.x, 0.0, gap.m_position.z) + gap.m_cross * m_dirtOffset;
+
+    { // The ramps have to stand either side of it, with none of it left between them
+        const double before = m_slabs.front().m_x1;
+        const double after = m_slabs[1].m_x0;
+        require(!m_dirt.contains(Vec3(before - 0.1, 0.0, 0.0)) && !m_dirt.contains(Vec3(after + 0.1, 0.0, 0.0)),
+            "Terrain::placeDirtRoad: a ramp stands on the dirt road");
+        require(m_dirt.contains(Vec3(0.5 * (before + after), 0.0, 0.0)),
+            "Terrain::placeDirtRoad: the jump does not clear the dirt road");
+    }
+}
+
+// Tiled in two shades, in squares smaller than the grass, so it reads as a dirt track
+void Terrain::buildDirtRoad()
+{
+    const int across = (int) std::ceil(2.0 * m_dirt.halfWidth() / m_dirtTile);
+    const int along = (int) std::ceil(2.0 * m_dirt.m_halfLength / m_dirtTile);
+    const double stepAcross = 2.0 * m_dirt.halfWidth() / across;
+    const double stepAlong = 2.0 * m_dirt.m_halfLength / along;
+    const auto corner = [&](int i, int j)
+    {
+        const Vec3 flat = m_dirt.m_centre
+            + m_dirt.m_cross * (-m_dirt.halfWidth() + stepAcross * i)
+            + m_dirt.m_forward * (-m_dirt.m_halfLength + stepAlong * j);
+        return flat + Vec3(0.0, m_dirt.height(flat), 0.0);
+    };
+
+    for (int i = 0; i < across; ++i)
+    {
+        for (int j = 0; j < along; ++j)
+        {
+            addFace(Face(corner(i, j), corner(i, j + 1), corner(i + 1, j + 1), corner(i + 1, j),
+                ((i + j) & 1) != 0 ? Face::Surface::DirtPale : Face::Surface::DirtDark, true));
+        }
+    }
 }
 
 // A row of old cars to flatten, lying across the road on the run back from the last gate
@@ -151,6 +239,12 @@ void Terrain::reset()
     }
 }
 
+// The solid ground under a point: the dirt road where it is sunk, the plane at zero elsewhere
+double Terrain::groundFloor(const Vec3& point) const
+{
+    return m_dirt.height(point);
+}
+
 double Terrain::getCrush() const
 {
     const double total = std::accumulate(m_wrecks.begin(), m_wrecks.end(), 0.0,
@@ -176,6 +270,23 @@ void Terrain::buildRoad()
         const Vec3 pr = p.m_position + p.m_cross * w;
         const Vec3 ql = q.m_position - q.m_cross * w;
         const Vec3 qr = q.m_position + q.m_cross * w;
+        if (p.m_kind == PathPoint::Kind::Gap || q.m_kind == PathPoint::Kind::Gap)
+        {
+            // The missing piece of bridge: nothing to drive on, only the cut ends of the deck
+            const PathPoint& edge = p.m_kind == PathPoint::Kind::Gap ? q : p;
+            if (edge.m_kind != PathPoint::Kind::Gap)
+            {
+                const Vec3 el = edge.m_position - edge.m_cross * w;
+                const Vec3 er = edge.m_position + edge.m_cross * w;
+                addFace(Face(el + drop, er + drop, er, el, Face::Surface::Concrete, false));
+            }
+            continue;
+        }
+        if (p.m_kind == PathPoint::Kind::Flat && m_dirt.contains(p.m_position))
+        {
+            continue; // the road is cut where it crosses the dirt road
+        }
+
         const bool raised = p.m_kind != PathPoint::Kind::Flat || q.m_kind != PathPoint::Kind::Flat;
         const bool loop = p.m_kind == PathPoint::Kind::Loop || q.m_kind == PathPoint::Kind::Loop;
         const bool open = p.m_kind == PathPoint::Kind::Bridge && q.m_kind == PathPoint::Kind::Bridge;
@@ -245,9 +356,10 @@ void Terrain::buildSlabs()
     }
 }
 
-Terrain::Triangle Terrain::makeTriangle(const Vec3& a, const Vec3& b, const Vec3& c)
+Terrain::Triangle Terrain::makeTriangle(const Vec3& a, const Vec3& b, const Vec3& c, double traction)
 {
     Triangle triangle;
+    triangle.m_traction = traction;
     triangle.m_a = a;
     triangle.m_ab = b - a;
     triangle.m_ac = c - a;
@@ -261,8 +373,9 @@ void Terrain::buildGrid()
     {
         if (face.m_solid)
         {
-            m_triangles.push_back(makeTriangle(face.m_a, face.m_b, face.m_c));
-            m_triangles.push_back(makeTriangle(face.m_a, face.m_c, face.m_d));
+            const double grip = Face::traction(face.m_surface);
+            m_triangles.push_back(makeTriangle(face.m_a, face.m_b, face.m_c, grip));
+            m_triangles.push_back(makeTriangle(face.m_a, face.m_c, face.m_d, grip));
         }
     }
     require(!m_triangles.empty(), "Terrain::buildGrid: no solid faces");
@@ -337,6 +450,7 @@ bool Terrain::intersect(const Triangle& triangle, const Vec3& origin, const Vec3
     hit.m_distance = t;
     hit.m_point = origin + direction * t;
     hit.m_normal = dot(triangle.m_normal, direction) < 0.0 ? triangle.m_normal : -triangle.m_normal;
+    hit.m_traction = triangle.m_traction;
     hit.m_wreck = -1;
     return true;
 }
@@ -346,13 +460,15 @@ bool Terrain::raycast(const Vec3& origin, const Vec3& direction, double reach, H
     bool found = false;
     double nearest = reach;
 
-    { // Ground plane
-        if (direction.y < 0.0 && origin.y >= 0.0 && -origin.y / direction.y <= nearest)
+    { // Ground plane, with a hole in it where the dirt road is sunk
+        const double t = direction.y < 0.0 ? -origin.y / direction.y : -1.0;
+        if (t >= 0.0 && origin.y >= 0.0 && t <= nearest && !m_dirt.contains(origin + direction * t))
         {
-            nearest = -origin.y / direction.y;
-            hit.m_distance = nearest;
-            hit.m_point = origin + direction * nearest;
+            nearest = t;
+            hit.m_distance = t;
+            hit.m_point = origin + direction * t;
             hit.m_normal = Vec3(0.0, 1.0, 0.0);
+            hit.m_traction = m_grassTraction;
             hit.m_wreck = -1;
             found = true;
         }
@@ -391,8 +507,9 @@ bool Terrain::raycast(const Vec3& origin, const Vec3& direction, double reach, H
             }
             for (const Face& face : wreck.faces())
             {
-                if (intersect(makeTriangle(face.m_a, face.m_b, face.m_c), origin, direction, nearest, hit)
-                    || intersect(makeTriangle(face.m_a, face.m_c, face.m_d), origin, direction, nearest, hit))
+                const double grip = Face::traction(face.m_surface);
+                if (intersect(makeTriangle(face.m_a, face.m_b, face.m_c, grip), origin, direction, nearest, hit)
+                    || intersect(makeTriangle(face.m_a, face.m_c, face.m_d, grip), origin, direction, nearest, hit))
                 {
                     nearest = hit.m_distance;
                     hit.m_wreck = (int) i;

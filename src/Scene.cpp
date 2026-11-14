@@ -132,7 +132,7 @@ void Scene::build(const Game& game, const Vec3& eye)
     m_mesh.clear();
     addGround(eye);
     addFaces(game.getTerrain());
-    addMarkings(game.getTerrain().getTrack());
+    addMarkings(game.getTerrain());
     addCheckpoints(game.getTerrain().getTrack());
     for (const Wreck& wreck : game.getTerrain().getWrecks())
     {
@@ -184,6 +184,8 @@ void Scene::addFaces(const Terrain& terrain)
     const Color deck(0.88f, 0.72f, 0.30f);
     const Color flank(0.70f, 0.30f, 0.20f);
     const Color concrete(0.62f, 0.62f, 0.60f);
+    const Color dirtPale(0.62f, 0.49f, 0.33f);
+    const Color dirtDark(0.52f, 0.40f, 0.26f);
     const double roadLift = 0.03;   // keeps the road clear of the ground it lies on
     const double stripeLift = 0.06;
 
@@ -210,6 +212,12 @@ void Scene::addFaces(const Terrain& terrain)
         case Face::Surface::Concrete:
             color = concrete;
             break;
+        case Face::Surface::DirtPale:
+            color = dirtPale;
+            break;
+        case Face::Surface::DirtDark:
+            color = dirtDark;
+            break;
         default:
             require(false, "Scene::addFaces: unknown surface");
         }
@@ -218,8 +226,9 @@ void Scene::addFaces(const Terrain& terrain)
     }
 }
 
-void Scene::addMarkings(const Track& track)
+void Scene::addMarkings(const Terrain& terrain)
 {
+    const Track& track = terrain.getTrack();
     const Color paint(0.95f, 0.95f, 0.90f);
     const std::vector<PathPoint>& points = track.getPoints();
     const double lift = 0.07;
@@ -230,7 +239,9 @@ void Scene::addMarkings(const Track& track)
     {
         const PathPoint& p = points[i];
         const PathPoint& q = points[i + 1];
-        if (std::fmod(p.m_distance, pitch) < 0.5 * pitch)
+        const bool missing = p.m_kind == PathPoint::Kind::Gap || q.m_kind == PathPoint::Kind::Gap
+            || terrain.getDirtRoad().contains(p.m_position);
+        if (!missing && std::fmod(p.m_distance, pitch) < 0.5 * pitch)
         {
             const Vec3 a = p.m_position + p.m_normal * lift;
             const Vec3 b = q.m_position + q.m_normal * lift;

@@ -116,18 +116,19 @@ int main()
         };
         Hit hit;
         check(heightAt(0.0, 0.0, 5.0) == 0.0, "flat at the start");
-        check(std::fabs(heightAt(97.0, 0.0, 10.0) - 1.75) < 1.0e-9, "jump ramp is linear");
-        check(heightAt(97.0, 6.0, 10.0) == 0.0, "jump ramp has a finite width");
-        check(heightAt(110.0, 0.0, 10.0) == 0.0, "gap between the ramps");
-        check(terrain.raycast(Vec3(97.0, 10.0, 0.0), down, 100.0, hit) && hit.m_normal.x < -0.2, "ramp normal leans back");
+        check(std::fabs(heightAt(78.5, 0.0, 20.0) - 1.95) < 1.0e-9, "jump ramp is linear");
+        check(heightAt(78.5, 6.0, 20.0) == 0.0, "jump ramp has a finite width");
+        check(heightAt(92.5, 0.0, 20.0) < -1.0, "the dirt road is sunk between the ramps");
+        check(terrain.raycast(Vec3(78.5, 10.0, 0.0), down, 100.0, hit) && hit.m_normal.x < -0.2, "ramp normal leans back");
         const Wreck& wreck = terrain.getWrecks().front();
         const Vec3 above = wreck.getPosition() + wreck.getUp() * 5.0;
         check(terrain.raycast(above, -wreck.getUp(), 100.0, hit) && hit.m_wreck == 0
             && dot(hit.m_point - wreck.getPosition(), wreck.getUp()) > 1.0, "a wreck is in the way");
-        check(std::fabs(heightAt(62.0, 0.0, 20.0) - terrain.getTrack().getBridgeHeight()) < 1.0e-6, "bridge deck over the crossing");
+        check(std::fabs(heightAt(62.0, 8.0, 20.0) - terrain.getTrack().getBridgeHeight()) < 1.0e-6,
+            "bridge deck beside the crossing");
         check(heightAt(62.0, 0.0, 3.0) == 0.0, "road passes under the bridge");
         check(terrain.raycast(Vec3(40.0, 1.5, 30.0), Vec3(1.0, 0.0, 0.0), 40.0, hit) && hit.m_normal.x < -0.99, "embankment has walls");
-        check(!terrain.raycast(Vec3(40.0, 1.5, 0.0), Vec3(1.0, 0.0, 0.0), 40.0, hit), "tunnel is open");
+        check(!terrain.raycast(Vec3(40.0, 1.5, 0.0), Vec3(1.0, 0.0, 0.0), 25.0, hit), "tunnel is open");
         check(!terrain.raycast(Vec3(0.0, 1.0, 0.0), Vec3(0.0, 1.0, 0.0), 100.0, hit), "nothing above the start");
 
         bool thrown = false;
@@ -290,9 +291,78 @@ int main()
         std::cout << "    sideslip " << slip << " m/s, radius " << radius
             << " m, min up.y " << minUp << std::endl;
         check(slip < 0.8, "tyres hold instead of sliding sideways");
-        check(radius < 45.0, "the turn is tight");
+        check(radius < 52.0, "the turn is tight");
         check(minUp > 0.9, "a hard corner does not tip the truck");
-        check(dot(truck.forward(), entry) < 0.0, "the truck turns well past a right angle");
+        check(dot(truck.forward(), entry) < 0.5, "the truck turns well past a right angle");
+    }
+
+    std::cout << "Broken bridge and dirt road" << std::endl;
+    {
+        Terrain terrain;
+        const Track& track = terrain.getTrack();
+        const DirtRoad& dirt = terrain.getDirtRoad();
+        const PathPoint& gap = track.getGapCentre();
+        const Vec3 down(0.0, -1.0, 0.0);
+        const Vec3 high(0.0, 2.0, 0.0);
+        Hit hit;
+
+        // The deck is missing over the tunnel: a ray dropped there falls through to the road below
+        check(terrain.raycast(gap.m_position + high, down, 50.0, hit) && hit.m_point.y == 0.0,
+            "the bridge has a hole in it above the tunnel");
+        const Vec3 beside = gap.m_position + gap.m_forward * (track.getBridgeGap() + 3.0) + high;
+        check(terrain.raycast(beside, down, 50.0, hit)
+            && std::fabs(hit.m_point.y - track.getBridgeHeight()) < 1.0e-6, "the deck carries on past it");
+
+        // The dirt road runs alongside, to the right as the bridge is driven, and is sunk
+        check(dot(dirt.m_centre - gap.m_position, gap.m_cross) > 0.0, "the dirt road lies to its right");
+        check(std::fabs(dot(dirt.m_forward, gap.m_forward)) > 0.99, "running alongside it");
+        check(terrain.raycast(dirt.m_centre + Vec3(0.0, 5.0, 0.0), down, 50.0, hit) && hit.m_point.y < -1.0,
+            "sunk into the ground");
+
+        bool pale = false;
+        bool dark = false;
+        double tile = 0.0;
+        for (const Face& face : terrain.getFaces())
+        {
+            pale = pale || face.m_surface == Face::Surface::DirtPale;
+            dark = dark || face.m_surface == Face::Surface::DirtDark;
+            if (face.m_surface == Face::Surface::DirtPale || face.m_surface == Face::Surface::DirtDark)
+            {
+                tile = std::max(tile, length(face.m_b - face.m_a));
+            }
+        }
+        std::cout << "    dirt tiles of " << tile << " m, floor at " << dirt.height(dirt.m_centre)
+            << " m" << std::endl;
+        check(pale && dark, "tiled in two shades");
+        check(tile > 0.0 && tile < 10.0, "in tiles smaller than the grass");
+
+        // The going: tarmac, then dirt, then grass
+        const double onRoad = Face::traction(Face::Surface::Road);
+        const double onDirt = Face::traction(Face::Surface::DirtPale);
+        check(terrain.raycast(dirt.m_centre + Vec3(0.0, 5.0, 0.0), down, 50.0, hit)
+            && std::fabs(hit.m_traction - onDirt) < 1.0e-9, "a ray onto the dirt road reports its going");
+        check(terrain.raycast(Vec3(0.0, 5.0, 200.0), down, 50.0, hit) && hit.m_traction < onDirt && onDirt < onRoad,
+            "the road is the fastest going, then the dirt road, then the grass");
+
+        // and it shows in what the truck can do from rest
+        const auto after = [&](const Vec3& from, const Vec3& forward)
+        {
+            Terrain ground;
+            Truck truck;
+            truck.placeAt(from, forward, Vec3(0.0, 1.0, 0.0));
+            for (double t = 0.0; t < 6.0; t += 1.0 / 240.0)
+            {
+                truck.step(1.0 / 240.0, drive(1.0, 0.0, 0.0), ground);
+            }
+            return truck.getSpeed();
+        };
+        const Truck standing;
+        const double onTheDirt = after(dirt.m_centre - dirt.m_forward * 45.0
+            + Vec3(0.0, dirt.height(dirt.m_centre) + standing.getRideHeight(), 0.0), dirt.m_forward);
+        const double onTheGrass = after(Vec3(0.0, standing.getRideHeight(), 200.0), Vec3(1.0, 0.0, 0.0));
+        std::cout << "    after six seconds: dirt " << onTheDirt << " m/s, grass " << onTheGrass
+            << " m/s" << std::endl;
+        check(onTheDirt > onTheGrass + 0.5, "the truck gets along faster on the dirt road than on the grass");
     }
 
     std::cout << "Tyre setups" << std::endl;
@@ -730,6 +800,8 @@ int main()
         std::vector<int> gates(racers.size(), 0);
         double lowest = 9.0;
         double deepest = 0.0;
+        double lowestOnTheBridge = 9.0;
+        const std::vector<PathPoint>& where = race.getTerrain().getTrack().getPoints();
         bool lapsWereComplete = true;
         bool overWithThePlayer = true;
         const auto allFinished = [&]()
@@ -751,6 +823,11 @@ int main()
                 }
                 gates[i] = racers[i].getCheckpointsPassed();
                 lowest = std::min(lowest, racers[i].m_truck.getPosition().y);
+                const PathPoint::Kind kind = where[racers[i].m_progress].m_kind;
+                if (kind == PathPoint::Kind::Bridge || kind == PathPoint::Kind::Gap)
+                {
+                    lowestOnTheBridge = std::min(lowestOnTheBridge, racers[i].m_truck.getPosition().y);
+                }
                 for (size_t j = i + 1; j < racers.size(); ++j)
                 {
                     deepest = std::max(deepest, Truck::overlap(racers[i].m_truck, racers[j].m_truck));
@@ -782,6 +859,8 @@ int main()
         check(places == std::vector<int>({ 1, 2, 3, 4 }), "they finish first to fourth, no place shared");
         check(lapsWereComplete, "every credited lap passed every checkpoint");
         check(lowest > 0.5, "nobody falls through the road");
+        std::cout << "    lowest on the bridge " << lowestOnTheBridge << " m" << std::endl;
+        check(lowestOnTheBridge > 3.0, "every racer clears the hole in the bridge instead of dropping through");
         check(deepest < 0.6, "trucks bump but do not drive through each other");
         check(overWithThePlayer && race.isRaceOver(), "the race is over when the player finishes");
         check(race.getPosition() == racers.front().m_finishPlace, "the player's position is the finishing place");

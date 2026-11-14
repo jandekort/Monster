@@ -308,6 +308,7 @@ void Truck::wheelForces(double dt, const Controls& controls, Terrain& terrain, V
         Vec3 normal;
         Vec3 contact;
         int onWreck = -1;
+        double traction = 1.0;
         const double sweep = m_maxCompression + m_rayMargin;
         for (int k = 0; k < m_wheelSpokes; ++k)
         {
@@ -321,6 +322,7 @@ void Truck::wheelForces(double dt, const Controls& controls, Terrain& terrain, V
                 normal = hit.m_normal;
                 contact = hit.m_point;
                 onWreck = hit.m_wreck;
+                traction = hit.m_traction;
             }
         }
 
@@ -352,22 +354,23 @@ void Truck::wheelForces(double dt, const Controls& controls, Terrain& terrain, V
             rollSpeed = dot(velocity, along);
             const double slipSpeed = dot(velocity, across);
 
-            double drive = throttle * m_driveForce * std::max(0.0, 1.0 - rollSpeed / m_setup.m_topSpeed);
+            double drive = throttle * m_driveForce * traction * std::max(0.0, 1.0 - rollSpeed / m_setup.m_topSpeed);
             if (brake > 0.0)
             {
                 if (rollSpeed > 0.5)
                 {
-                    drive -= brake * m_brakeForce;
+                    drive -= brake * m_brakeForce * traction;
                 }
                 else
                 {
-                    drive -= brake * 0.6 * m_driveForce * std::max(0.0, 1.0 + rollSpeed / m_reverseSpeed);
+                    drive -= brake * 0.6 * m_driveForce * traction * std::max(0.0, 1.0 + rollSpeed / m_reverseSpeed);
                 }
             }
-            drive -= m_rollingDrag * rollSpeed;
-            double side = -m_setup.m_grip * load * clamp(slipSpeed / m_setup.m_slipSaturation, -1.0, 1.0);
+            drive -= m_rollingDrag / traction * rollSpeed;
+            const double grip = m_setup.m_grip * traction;
+            double side = -grip * load * clamp(slipSpeed / m_setup.m_slipSaturation, -1.0, 1.0);
 
-            const double limit = m_setup.m_grip * load;
+            const double limit = grip * load;
             const double demand = std::sqrt(drive*drive + side*side);
             if (demand > limit)
             {
@@ -411,7 +414,7 @@ void Truck::bodyForces(const Terrain& terrain, Vec3& force, Vec3& torque)
         // The ground is a solid half-space, not a surface seen from above: a point below it is
         // pushed out even when the centre of mass itself has ended up under the surface
         Vec3 normal(0.0, 1.0, 0.0);
-        double depth = std::max(0.0, -(m_position.y + arm.y));
+        double depth = std::max(0.0, terrain.groundFloor(m_position + arm) - (m_position.y + arm.y));
 
         { // Road surfaces: one between the centre of mass and the point means the point is through it
             const double reach = length(arm);

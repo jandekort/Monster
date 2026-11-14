@@ -15,6 +15,7 @@ struct PathPoint
         Flat,       // painted on the ground
         Embankment, // raised, closed walls down to the ground
         Bridge,     // raised, open underneath
+        Gap,        // the piece of bridge deck that is missing: nothing to drive on
         Loop
     };
 
@@ -39,6 +40,8 @@ public:
     double getHalfWidth() const { return m_halfWidth; }
     double getLength() const { return m_points.back().m_distance; }
     double getBridgeHeight() const { return m_bridgeHeight; }
+    double getBridgeGap() const { return m_bridgeGap; }
+    const PathPoint& getGapCentre() const; // the broken piece of the bridge
 
     // Track points carrying a numbered checkpoint gate, in the order they are driven through.
     // The start and finish line is the point the lap begins and ends on, and is not one of them.
@@ -68,6 +71,7 @@ private:
     double m_bridgeRamp;  // length of each approach ramp [m]
     double m_bridgeDeck;  // half length of the level deck [m]
     double m_tunnelHalf;  // half width of the opening under the deck [m]
+    double m_bridgeGap;   // length of deck missing at the crest [m]
 
     // Checkpoints
     size_t m_checkpointCount;
