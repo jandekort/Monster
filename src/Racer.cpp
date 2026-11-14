@@ -41,6 +41,7 @@ Racer::Racer(const std::string& name, const Color& color, const Driver::Style& s
     , m_lapClock(-1.0)
     , m_missedClock(-1.0)
     , m_loopDone(false)
+    , m_ahead(false)
     , m_loopClock(-1.0)
     , m_stuntScore(0)
     , m_crushShare(0.0)

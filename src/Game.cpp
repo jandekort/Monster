@@ -432,13 +432,16 @@ void Game::updateProgress(Racer& racer)
         }
     }
 
-    // The lap is credited on crossing the line, not on touching the last track point: taken wide
-    // or at speed, the truck can pass the line without ever coming near that one point
+    // The lap ends when the truck crosses the start/finish line going forwards, and not before:
+    // the track point on the line is reached while the truck is still short of it. The gates
+    // of the lap must all have been passed, so the crossing alone cannot end a lap early.
     const PathPoint& line = m_terrain.getTrack().getStartFinish();
-    const bool roundAgain = racer.m_progress + m_gateWindow >= last
-        && dot(racer.m_truck.getPosition() - line.m_position, line.m_forward) > 0.0;
+    const Vec3 fromLine = racer.m_truck.getPosition() - line.m_position;
+    const bool ahead = dot(fromLine, line.m_forward) > 0.0;
+    const bool crossed = ahead && !racer.m_ahead && length(fromLine) < m_gateRadius;
+    racer.m_ahead = ahead;
 
-    if (racer.m_progress == last || roundAgain)
+    if (crossed)
     {
         const bool complete = racer.lapIsComplete();
         racer.m_progress = 0;

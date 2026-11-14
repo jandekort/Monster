@@ -71,6 +71,7 @@ struct Racer
     double m_lapClock;        // seconds since the last lap was finished, negative->none yet
     double m_missedClock;     // seconds since a lap was rejected, negative->none yet
     bool m_loopDone;          // true->loop already scored this lap
+    bool m_ahead;             // true->truck is beyond the start/finish line
     double m_loopClock;       // seconds since the loop was scored, negative->not yet
     int m_stuntScore;         // loop points collected this run
     double m_crushShare;      // part of the wreck this truck flattened, 0..1
