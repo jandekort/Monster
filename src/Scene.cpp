@@ -66,6 +66,11 @@ Scene::Scene()
     , m_tileSize(20.0)
     , m_tileRange(24)
     , m_wheelSides(12)
+    , m_gateHeight(6.4)
+    , m_gateBanner(4.6)
+    , m_poleHalfWidth(0.22)
+    , m_bannerHalfDepth(0.14)
+    , m_digitHeight(1.3)
     , m_treeSpacing(24.0)
     , m_treeClearance(14.0)
     , m_planted(false)
@@ -79,6 +84,7 @@ void Scene::build(const Game& game, const Vec3& eye)
     addGround(eye);
     addFaces(game.getTerrain());
     addMarkings(game.getTerrain().getTrack());
+    addCheckpoints(game.getTerrain().getTrack());
     addWreck(game.getTerrain().getWreck());
     plantTrees(game.getTerrain().getTrack());
     addScenery();
@@ -185,6 +191,96 @@ void Scene::addMarkings(const Track& track)
         const Vec3 side = start.m_cross * track.getHalfWidth();
         m_mesh.addQuad(a - side, a + side, b + side, b - side, paint, start.m_normal);
     }
+}
+
+// A numbered gate at each checkpoint: two poles outside the road edge and a banner across it
+void Scene::addCheckpoints(const Track& track)
+{
+    const Color pole(0.93f, 0.93f, 0.88f);
+    const Color banner(0.10f, 0.22f, 0.48f);
+    const Color digits(1.00f, 0.84f, 0.16f);
+    const Vec3 up(0.0, 1.0, 0.0);
+    const std::vector<PathPoint>& points = track.getPoints();
+    const double halfWidth = track.getGateHalfWidth();
+    const double bannerHalfHeight = 0.5 * (m_gateHeight - m_gateBanner);
+
+    for (size_t i = 0; i < track.getCheckpoints().size(); ++i)
+    {
+        const PathPoint& point = points[track.getCheckpoints()[i]];
+        const Vec3& f = point.m_forward;
+        const Vec3& cross = point.m_cross;
+        const Vec3 base = point.m_position;
+
+        for (double side : { -1.0, 1.0 })
+        {
+            m_mesh.addBox(base + cross * (side * halfWidth) + up * (0.5 * m_gateHeight), f, up, cross,
+                Vec3(m_poleHalfWidth, 0.5 * m_gateHeight, m_poleHalfWidth), pole);
+        }
+
+        const Vec3 middle = base + up * (m_gateBanner + bannerHalfHeight);
+        m_mesh.addBox(middle, f, up, cross, Vec3(m_bannerHalfDepth, bannerHalfHeight, halfWidth), banner);
+
+        // The number faces the oncoming truck, which reads it with the road's right hand to its right
+        addNumber(middle - f * (m_bannerHalfDepth + 0.03), cross, up, m_digitHeight, (int) i + 1, digits);
+    }
+}
+
+void Scene::addNumber(const Vec3& center, const Vec3& right, const Vec3& up, double height, int value,
+    const Color& color)
+{
+    require(value >= 0, "Scene::addNumber: value must not be negative");
+
+    std::vector<int> digits;
+    for (int rest = value; digits.empty() || rest > 0; rest /= 10)
+    {
+        digits.push_back(rest % 10);
+    }
+
+    const double advance = 0.85 * height;
+    const double first = -0.5 * advance * (digits.size() - 1);
+    for (size_t i = 0; i < digits.size(); ++i)
+    {
+        addDigit(center + right * (first + advance * (digits.size() - 1 - i)), right, up, height,
+            digits[i], color);
+    }
+}
+
+// Seven segment digit, drawn as bars in the plane spanned by right and up
+void Scene::addDigit(const Vec3& center, const Vec3& right, const Vec3& up, double height, int digit,
+    const Color& color)
+{
+    require(digit >= 0 && digit <= 9, "Scene::addDigit: not a digit");
+
+    //                                 0     1     2     3     4     5     6     7     8     9
+    static const int lit[10] = { 0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F };
+    const double h = 0.5 * height;
+    const double w = 0.30 * height;
+    const double t = 0.100 * height;
+
+    // A one is drawn down the middle: a seven segment one sits on the right of its cell, which
+    // beside no other digit reads as a stray mark rather than a numeral
+    const double lean = digit == 1 ? -w : 0.0;
+    const Vec3 normal = normalize(cross(right, up));
+
+    const auto bar = [&](int segment, double cx, double cy, double halfX, double halfY)
+    {
+        if ((lit[digit] & segment) == 0)
+        {
+            return;
+        }
+        const Vec3 middle = center + right * cx + up * cy;
+        const Vec3 x = right * halfX;
+        const Vec3 y = up * halfY;
+        m_mesh.addQuad(middle - x - y, middle + x - y, middle + x + y, middle - x + y, color, normal);
+    };
+
+    bar(0x01,  0.0,      h,  w, t);       // a, top
+    bar(0x02,  w + lean,  0.5*h,  t, 0.5 * h); // b, upper right
+    bar(0x04,  w + lean, -0.5*h,  t, 0.5 * h); // c, lower right
+    bar(0x08,  0.0,     -h,  w, t);       // d, bottom
+    bar(0x10,   -w, -0.5*h,  t, 0.5 * h); // e, lower left
+    bar(0x20,   -w,  0.5*h,  t, 0.5 * h); // f, upper left
+    bar(0x40,  0.0,    0.0,  w, t);       // g, middle
 }
 
 // Trees on a jittered grid, kept clear of the road

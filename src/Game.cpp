@@ -3,6 +3,8 @@
 // Created: 2026-11-14
 #include "Game.h"
 
+#include "Check.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -35,7 +37,9 @@ Game::Game()
     , m_lap(1)
     , m_lapTime(0.0)
     , m_bestLapTime(-1.0)
+    , m_checkpointsPassed()
     , m_lapClock(-1.0)
+    , m_missedClock(-1.0)
     , m_lastLapTime(0.0)
     , m_loopDone(false)
     , m_loopClock(-1.0)
@@ -58,6 +62,7 @@ void Game::reset()
     m_lap = 1;
     m_lapTime = 0.0;
     m_lapClock = -1.0;
+    m_missedClock = -1.0;
     m_loopDone = false;
     m_loopClock = -1.0;
     m_stuntScore = 0;
@@ -70,14 +75,14 @@ void Game::reset()
             ++m_progress;
         }
     }
+    clearCheckpoints();
 }
 
-// Put the truck back on the road, upright and at rest, where it last was. The loop is skipped:
-// recovering onto its ceiling would only drop the truck again.
-void Game::recover()
+void Game::placeOnTrack(size_t index)
 {
     const std::vector<PathPoint>& points = m_terrain.getTrack().getPoints();
-    size_t index = m_progress;
+
+    // The loop is skipped: standing the truck on its ceiling would only drop it again
     while (index > 0 && points[index].m_normal.y < m_uprightNormal)
     {
         --index;
@@ -91,6 +96,23 @@ void Game::recover()
     m_tippedClock = 0.0;
     m_wreckedClock = 0.0;
     m_wrecked = false;
+}
+
+// Begin again from somewhere on the circuit. The checkpoints of the lap in progress are given
+// up, because the truck did not drive past them, so that lap can no longer be credited.
+void Game::startAt(size_t pointIndex)
+{
+    require(pointIndex < m_terrain.getTrack().getPoints().size(), "Game::startAt: no such track point");
+    placeOnTrack(pointIndex);
+    clearCheckpoints();
+    m_lapTime = 0.0;
+}
+
+// Put the truck back on the road where it last was. The checkpoints already passed this lap
+// are kept: being set upright is not a shortcut.
+void Game::recover()
+{
+    placeOnTrack(m_progress);
 }
 
 void Game::step(double elapsed)
@@ -133,6 +155,41 @@ void Game::step(double elapsed)
     m_best = std::max(m_best, getScore());
 }
 
+int Game::getCheckpointCount() const
+{
+    return (int) m_terrain.getTrack().getCheckpoints().size();
+}
+
+int Game::getCheckpointsPassed() const
+{
+    return (int) std::count(m_checkpointsPassed.begin(), m_checkpointsPassed.end(), true);
+}
+
+bool Game::lapIsComplete() const
+{
+    return std::all_of(m_checkpointsPassed.begin(), m_checkpointsPassed.end(),
+        [](bool passed) { return passed; });
+}
+
+void Game::clearCheckpoints()
+{
+    m_checkpointsPassed.assign(m_terrain.getTrack().getCheckpoints().size(), false);
+}
+
+// Only gates the truck actually drove through are marked, so a lap begun partway round the
+// circuit cannot be credited
+void Game::markCheckpoints(size_t from, size_t to)
+{
+    const std::vector<size_t>& checkpoints = m_terrain.getTrack().getCheckpoints();
+    for (size_t i = 0; i < checkpoints.size(); ++i)
+    {
+        if (checkpoints[i] > from && checkpoints[i] <= to)
+        {
+            m_checkpointsPassed[i] = true;
+        }
+    }
+}
+
 // Track points must be reached in order, so the loop and the bridge cannot be skipped
 void Game::updateProgress()
 {
@@ -143,7 +200,12 @@ void Game::updateProgress()
     {
         m_lapClock += m_fixedStep;
     }
+    if (m_missedClock >= 0.0)
+    {
+        m_missedClock += m_fixedStep;
+    }
 
+    const size_t previous = m_progress;
     for (size_t ahead = m_gateWindow; ahead >= 1; --ahead)
     {
         const size_t index = std::min(m_progress + ahead, last);
@@ -154,15 +216,26 @@ void Game::updateProgress()
         }
     }
 
+    markCheckpoints(previous, m_progress);
+
     if (m_progress == last)
     {
+        const bool complete = lapIsComplete();
         m_progress = 0;
-        m_lastLapTime = m_lapTime;
-        m_bestLapTime = m_bestLapTime < 0.0 ? m_lapTime : std::min(m_bestLapTime, m_lapTime);
-        m_lapTime = 0.0;
-        m_lapClock = 0.0;
+        clearCheckpoints();
         m_loopDone = false;
-        ++m_lap;
+        if (complete)
+        {
+            m_lastLapTime = m_lapTime;
+            m_bestLapTime = m_bestLapTime < 0.0 ? m_lapTime : std::min(m_bestLapTime, m_lapTime);
+            m_lapClock = 0.0;
+            ++m_lap;
+        }
+        else
+        {
+            m_missedClock = 0.0;
+        }
+        m_lapTime = 0.0;
     }
 }
 
@@ -227,14 +300,18 @@ std::string Game::hudString() const
     {
         std::snprintf(message, sizeof(message), "LAP %.1f s", m_lastLapTime);
     }
+    else if (m_missedClock >= 0.0 && m_missedClock < m_messageDuration)
+    {
+        std::snprintf(message, sizeof(message), "LAP NOT COUNTED - CHECKPOINT MISSED");
+    }
     else if (m_crushClock >= 0.0 && m_crushClock < m_messageDuration)
     {
         std::snprintf(message, sizeof(message), "CRUSHED! +%d", m_crushPoints + m_crushBonus);
     }
 
-    char hud[160];
-    std::snprintf(hud, sizeof(hud), "%d|%d|%d|%s|%d|%.1f|%.1f",
+    char hud[224];
+    std::snprintf(hud, sizeof(hud), "%d|%d|%d|%s|%d|%.1f|%.1f|%d|%d",
         (int) std::lround(m_truck.getSpeed() * 3.6), getScore(), m_best, message,
-        m_lap, m_lapTime, m_bestLapTime);
+        m_lap, m_lapTime, m_bestLapTime, getCheckpointsPassed(), getCheckpointCount());
     return std::string(hud);
 }

@@ -44,7 +44,8 @@ check(count > 1000 && count % 3 === 0, "scene has triangles");
 check(vertices.every(Number.isFinite), "vertices are finite");
 check(matrix.every(Number.isFinite), "view projection is finite");
 check(Number(fields[1]) >= 500, "crushing and jumping score points");
-check(fields.length === 7 && fields[4] === "1" && Number(fields[5]) > 10.0, "lap and lap time are reported");
+check(fields.length === 9 && fields[4] === "1" && Number(fields[5]) > 10.0, "lap and lap time are reported");
+check(Number(fields[7]) >= 1 && fields[8] === "5", "checkpoints are counted");
 check(sawAir, "truck gets airborne");
 check(sawLanding, "landing is rated");
 

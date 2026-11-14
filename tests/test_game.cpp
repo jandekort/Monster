@@ -72,6 +72,28 @@ int main()
         check(orthonormal, "road frames are orthonormal");
     }
 
+    std::cout << "Checkpoints" << std::endl;
+    {
+        Track track;
+        const std::vector<PathPoint>& points = track.getPoints();
+        const std::vector<size_t>& checkpoints = track.getCheckpoints();
+        bool ordered = true;
+        bool onGoodRoad = true;
+        for (size_t i = 0; i < checkpoints.size(); ++i)
+        {
+            const PathPoint& point = points[checkpoints[i]];
+            ordered = ordered && (i == 0 || checkpoints[i] > checkpoints[i - 1]);
+            onGoodRoad = onGoodRoad && point.m_kind == PathPoint::Kind::Flat && !point.m_corner;
+            std::cout << "    gate " << i + 1 << " at " << point.m_distance << " m" << std::endl;
+        }
+        check(checkpoints.size() == 5, "there are five checkpoints");
+        check(ordered, "they are in driving order");
+        check(onGoodRoad, "every gate stands on level, straight road");
+        check(points[checkpoints.front()].m_distance < 0.1 * track.getLength(), "the first is just past the start");
+        check(points[checkpoints.back()].m_distance < track.getLength(), "the last is before the start line");
+        check(track.getGateHalfWidth() > track.getHalfWidth(), "the gate is wider than the road");
+    }
+
     std::cout << "Terrain" << std::endl;
     {
         Terrain terrain;
@@ -259,6 +281,7 @@ int main()
         const double frame = 1.0 / 60.0;
         bool inverted = false;
         bool underBridge = false;
+        int gatesPassed = 0;
         double bridgeHeight = 0.0;
         double worstOffset = 0.0;
         Vec3 worstAt;
@@ -270,6 +293,7 @@ int main()
             const Vec3& position = truck.getPosition();
             const PathPoint& here = points[game.getProgress()];
             inverted = inverted || (truck.up().y < -0.9 && truck.getWheelsOnGround() == 4);
+            gatesPassed = std::max(gatesPassed, game.getCheckpointsPassed());
             underBridge = underBridge || (std::fabs(position.x - 62.0) < 1.0 && std::fabs(position.z) < 2.0 && position.y < 2.0);
             if (here.m_kind == PathPoint::Kind::Bridge)
             {
@@ -297,6 +321,7 @@ int main()
         std::cout << "    bridge height " << bridgeHeight << ", worst offset " << worstOffset
             << " at (" << worstAt.x << ", " << worstAt.z << ")" << std::endl;
         check(!game.isWrecked(), "truck survives the lap");
+        check(gatesPassed == game.getCheckpointCount(), "every checkpoint is passed on the way round");
         check(game.getLap() == 2, "lap is completed");
         check(game.getBestLapTime() > 30.0 && game.getBestLapTime() < 90.0, "lap time is recorded");
         check(underBridge, "drives through the tunnel");
@@ -304,6 +329,29 @@ int main()
         check(bridgeHeight > 7.0, "drives over the bridge");
         check(worstOffset < 2.0, "stays in the middle of the loop and the bridge");
         check(game.getScore() >= 1300, "wreck, jump and loop all score");
+    }
+
+    std::cout << "Lap begun partway round" << std::endl;
+    {
+        Game game;
+        Autopilot pilot;
+        game.startAt(game.getTerrain().getTrack().getCheckpoints().back() + 3);
+        check(game.getCheckpointsPassed() == 0, "starting partway gives up the checkpoints of that lap");
+
+        const double frame = 1.0 / 60.0;
+        size_t previous = game.getProgress();
+        bool reachedTheLine = false;
+        for (double t = 0.0; t < 60.0 && !reachedTheLine && !game.isWrecked(); t += frame)
+        {
+            game.setControls(pilot.drive(game));
+            game.step(frame);
+            reachedTheLine = game.getProgress() < previous;
+            previous = game.getProgress();
+        }
+        std::cout << "    hud " << game.hudString() << std::endl;
+        check(reachedTheLine, "the truck drives round to the start line");
+        check(game.getLap() == 1, "the lap is not counted");
+        check(game.getBestLapTime() < 0.0, "and no lap time is recorded");
     }
 
     std::cout << "Loop needs speed" << std::endl;

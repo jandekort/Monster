@@ -60,6 +60,11 @@ private:
     void addGround(const Vec3& eye);
     void addFaces(const Terrain& terrain);
     void addMarkings(const Track& track);
+    void addCheckpoints(const Track& track);
+    void addNumber(const Vec3& center, const Vec3& right, const Vec3& up, double height, int value,
+        const Color& color);
+    void addDigit(const Vec3& center, const Vec3& right, const Vec3& up, double height, int digit,
+        const Color& color);
     void plantTrees(const Track& track);
     void addWreck(const Wreck& wreck);
     void addScenery();
@@ -70,6 +75,11 @@ private:
     double m_tileSize;
     int m_tileRange;   // tiles drawn in each direction around the camera
     int m_wheelSides;
+    double m_gateHeight;      // top of the poles above the road [m]
+    double m_gateBanner;      // underside of the banner: headroom for the truck [m]
+    double m_poleHalfWidth;
+    double m_bannerHalfDepth; // thickness of the banner along the road [m]
+    double m_digitHeight;
     double m_treeSpacing;
     double m_treeClearance; // distance kept from the road centre [m]
     bool m_planted;         // true->m_trees is filled

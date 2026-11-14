@@ -40,6 +40,10 @@ public:
     double getLength() const { return m_points.back().m_distance; }
     double getBridgeHeight() const { return m_bridgeHeight; }
 
+    // Track points carrying a checkpoint gate, in the order they are driven through
+    const std::vector<size_t>& getCheckpoints() const { return m_checkpoints; }
+    double getGateHalfWidth() const { return m_halfWidth + m_gateMargin; }
+
 private:
     void addPoint(const Vec3& position, const Vec3& forward, const Vec3& cross, const Vec3& normal,
         PathPoint::Kind kind, bool corner, double step);
@@ -47,10 +51,13 @@ private:
     void addArc(double radius, double angle); // angle in radians, positive->right
     void addBridge(double length, double crest);
     double addLoop(double radius, double shift); // shift positive->right; returns the forward advance
+    void chooseCheckpoints();
+    bool canCarryGate(size_t index) const;
     Vec3 heading() const;
     Vec3 rightward() const;
 
     std::vector<PathPoint> m_points;
+    std::vector<size_t> m_checkpoints;
     double m_halfWidth;
     double m_spacing;     // sample distance on straights [m]
     double m_arcStep;     // sample angle in bends [rad]
@@ -59,6 +66,13 @@ private:
     double m_bridgeRamp;  // length of each approach ramp [m]
     double m_bridgeDeck;  // half length of the level deck [m]
     double m_tunnelHalf;  // half width of the opening under the deck [m]
+
+    // Checkpoints
+    size_t m_checkpointCount;
+    double m_firstCheckpoint;     // distance of the first gate past the start line [m]; must be
+                                  // beyond Game's capture radius, or it is credited on the line
+    double m_gateMargin;          // how far outside the road edge the poles stand [m]
+    double m_gateClearance;       // level, straight road needed either side of a gate [m]
 
     // Cursor used while laying out the circuit
     Vec3 m_cursor;

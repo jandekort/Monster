@@ -19,6 +19,10 @@ Track::Track()
     , m_bridgeRamp(50.0)
     , m_bridgeDeck(12.0)
     , m_tunnelHalf(9.0)
+    , m_checkpointCount(5)
+    , m_firstCheckpoint(30.0)
+    , m_gateMargin(0.8)
+    , m_gateClearance(8.0)
     , m_cursor(-5.0, 0.0, 0.0)
     , m_angle(0.0)
 {
@@ -59,6 +63,50 @@ Track::Track()
     }
 
     require(length(m_cursor - m_points.front().m_position) < 1.0e-6, "Track: circuit does not close");
+
+    chooseCheckpoints();
+}
+
+// A gate needs level, straight road around it, so that it stands upright beside the road and
+// spans it squarely: never in a bend, on the bridge or inside the loop.
+bool Track::canCarryGate(size_t index) const
+{
+    const double here = m_points[index].m_distance;
+    return std::none_of(m_points.begin(), m_points.end(),
+        [&](const PathPoint& point)
+        {
+            return std::fabs(point.m_distance - here) <= m_gateClearance
+                && (point.m_kind != PathPoint::Kind::Flat || point.m_corner);
+        });
+}
+
+// The first gate sits just past the start line and the rest are spread evenly over the lap.
+// Each one then moves to the nearest piece of road that can carry it.
+void Track::chooseCheckpoints()
+{
+    const double spacing = (getLength() - m_firstCheckpoint) / m_checkpointCount;
+    const size_t none = m_points.size();
+
+    m_checkpoints.clear();
+    m_checkpoints.reserve(m_checkpointCount);
+    for (size_t i = 0; i < m_checkpointCount; ++i)
+    {
+        const double target = m_firstCheckpoint + i * spacing;
+        size_t best = none;
+        for (size_t index = 0; index + 1 < m_points.size(); ++index)
+        {
+            const bool after = m_checkpoints.empty() || index > m_checkpoints.back();
+            const bool nearer = best == none
+                || std::fabs(m_points[index].m_distance - target)
+                    < std::fabs(m_points[best].m_distance - target);
+            if (after && nearer && canCarryGate(index))
+            {
+                best = index;
+            }
+        }
+        require(best < none, "Track::chooseCheckpoints: no road can carry a gate");
+        m_checkpoints.push_back(best);
+    }
 }
 
 Vec3 Track::heading() const

@@ -182,7 +182,8 @@
 
             const fields = readString(game, game.monster_hud()).split("|");
             hud.speed.innerHTML = fields[0] + " km/h<br>LAP " + fields[4] + "&nbsp; " + fields[5] + " s" +
-                (Number(fields[6]) > 0.0 ? "<br>BEST LAP " + fields[6] + " s" : "");
+                (Number(fields[6]) > 0.0 ? "<br>BEST LAP " + fields[6] + " s" : "") +
+                "<br>CP " + fields[7] + "/" + fields[8];
             hud.score.innerHTML = "SCORE " + fields[1] + "<br>BEST " + fields[2];
             hud.message.textContent = fields[3] || "";
 

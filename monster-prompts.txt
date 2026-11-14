@@ -1,0 +1,503 @@
+================================================================================
+MONSTER - IMPLEMENTATION PROMPTS
+Eight prompts, in the order they should be run.
+================================================================================
+
+HOW TO USE THIS FILE
+
+Each prompt is delimited by ">>> COPY FROM HERE >>>" and "<<< TO HERE <<<".
+Copy everything between those markers and submit it as one message, with
+monster.zip attached (or with the project already in the working directory).
+
+If the session is fresh, paste the SHARED CONTEXT block below first, then the
+prompt underneath it. If you are continuing in a session that already built the
+previous step, the prompt alone is enough.
+
+Each prompt says which model to use and why. The short version:
+  Fable 5.2  - prompts 3, 5, 8   (architecture, wide refactors, geometry)
+  Opus 5     - prompts 1, 2, 4, 6, 7 (clear spec, local changes)
+
+Order matters in one place only: prompt 3 must come before prompt 5. Everything
+else can be reordered to taste.
+
+
+================================================================================
+SHARED CONTEXT  (paste above any prompt when starting a fresh session)
+================================================================================
+
+>>> COPY FROM HERE >>>
+Project: "Monster", a Stunts-style monster truck game in C++17 compiled to
+WebAssembly, deployed on GitHub Pages. The project is attached as monster.zip
+(unpack it into a working directory before starting).
+
+Layout:
+  src/Math.h        Vec3, Quat, Mat4
+  src/Check.h       require(), throws natively and traps in wasm
+  src/Track.*       circuit centreline: a cursor walk of straights, arcs, a
+                    bridge profile and a loop. 506 PathPoints over 988 m.
+                    PathPoint has position, forward, cross, normal, Kind
+                    (Flat, Embankment, Bridge, Loop), corner flag, distance.
+  src/Terrain.*     collision world. Face quads with a Surface enum, a uniform
+                    grid over the solid triangles, and
+                    raycast(origin, direction, reach, Hit&). Also the crushable
+                    wreck. The ground is a half-space at y = 0.
+  src/Truck.*       rigid body, four ray-cast sprung wheels, tyres, air control.
+                    Body frame: x forward, y up, z right.
+  src/Judge.*       air time, flips, landing rating.
+  src/Game.*        fixed 240 Hz step loop, score, laps, HUD string.
+  src/Mesh.*        flat-shaded triangle soup, 6 floats per vertex (xyz rgb),
+                    lighting baked into the vertex colour.
+  src/Scene.*       ChaseCamera and the per-frame scene mesh builder.
+  src/wasm_api.cpp  C functions exported to JavaScript.
+  docs/             the published site: index.html, monster.js (WebGL + input),
+                    and the committed monster.wasm.
+  tests/            test_game.cpp (native), Autopilot.* (a driver that completes
+                    a clean lap, used by the tests), smoke.mjs (drives the wasm
+                    build in Node).
+
+Build and test:
+  make test                        native tests, any C++17 compiler
+  make wasm WASI_SDK=/path/to/sdk  builds docs/monster.wasm (WASI SDK 25)
+  node tests/smoke.mjs             drives the wasm build
+  make serve                       local server on http://localhost:8000
+
+Current wasm exports: monster_init, monster_reset, monster_recover,
+monster_set_controls, monster_step, monster_render, monster_vertices,
+monster_view_projection, monster_hud.
+The HUD string is pipe separated: "speed|score|best|message|lap|lap time|best lap time".
+
+House rules for every change:
+- Use the "mycodestyle" skill for all C++ you write.
+- make test, make wasm and node tests/smoke.mjs must all pass when you are done.
+- Do not break existing tests. If a test needs to change, say why.
+- Add tests for what you add. Prefer tests that assert behaviour over tests that
+  assert constants.
+- No test-only hooks in production classes. If a test needs a capability, add it
+  as a feature the game could legitimately use, or test at a lower level.
+- Verify visual changes by driving the real page in headless Chrome and looking
+  at the screenshots, not only by reasoning about the code.
+- Keep the flat-shaded look: no textures, no asset files, geometry stays
+  procedural.
+<<< TO HERE <<<
+
+
+================================================================================
+PROMPT 1 OF 8 - CHECKPOINTS
+================================================================================
+Model:   Opus 5
+Why:     Clear spec, local change, and most of the machinery already exists.
+Depends: nothing
+Size:    ~250 new lines
+
+>>> COPY FROM HERE >>>
+Add visible checkpoints to Monster: five gates spaced around the circuit, each
+two poles carrying a banner with its number on it. A lap only counts if every
+checkpoint was passed, in order, during that lap.
+
+What already exists, and should be kept rather than replaced:
+Game::updateProgress() already enforces ordered gates. It advances m_progress
+through the 506 centreline points using m_gateRadius (12 m) and m_gateWindow
+(10 points), and a lap is only credited when progress reaches the last point.
+That is why the loop and the bridge cannot be skipped today. Build the
+checkpoints as a coarse, visible layer on top of this, do not remove it.
+
+Work:
+
+1. Track: choose five checkpoint positions, roughly evenly spaced by distance
+   along the centreline, and expose them as track point indices
+   (getCheckpoints()). Place them on Flat road only, never inside the loop, on
+   the bridge deck, or in a bend. Checkpoint 1 should be at or just after the
+   start line.
+
+2. Game: record which checkpoints have been passed in the current lap. A lap is
+   credited only when all five were passed; otherwise crossing the start line
+   does not increment the lap counter and does not record a lap time. Clear the
+   record at the start of each lap and on reset(). Expose how many have been
+   passed so the HUD can show it.
+
+3. Game: add "void startAt(size_t pointIndex)", which places the truck upright
+   on the centreline at that point, at rest, and sets progress accordingly.
+   This is a real feature (restarting from a checkpoint later) and it also lets
+   the tests start a lap partway round.
+
+4. Scene: draw each gate as two vertical poles just outside the road edge, with
+   a banner spanning between them above the road, high enough to drive under.
+   Put the checkpoint number on the banner. Build the digits from quads
+   (seven-segment style is fine and suits the look). Gates are static geometry.
+
+5. HUD: add a checkpoint field, for example "CP 3/5". The HUD string format
+   changes, so update docs/monster.js and tests/smoke.mjs to match.
+
+Tests to add in tests/test_game.cpp:
+- A full autopilot lap passes all five checkpoints and the lap is credited.
+- A lap started partway round with startAt(), so that early checkpoints are
+  missed, is NOT credited when the truck crosses the start line, and the lap
+  counter stays put.
+- Checkpoint positions are on Flat road and the gate is wider than the road.
+
+Report the lap time and score of the autopilot lap before and after your change
+so it is clear nothing regressed.
+<<< TO HERE <<<
+
+
+================================================================================
+PROMPT 2 OF 8 - TRUCK SETUP ON THE NUMBER KEYS
+================================================================================
+Model:   Opus 5
+Why:     Smallest change in the plan, mechanical, hard to get wrong.
+Depends: nothing
+Size:    ~100 new lines
+
+>>> COPY FROM HERE >>>
+Let the player change how the truck handles in corners, using the number keys.
+
+Design decision already made, implement it as described: this is a trade-off,
+not a difficulty slider. Five tyre setups on keys 1 to 5, running from soft to
+hard. Softer setups have more grip and a lower top speed; harder setups have
+less grip and a higher top speed. Setup 3 is the current car and is the default.
+Clamp grip to the range 0.6 to 1.25. Above roughly 1.25 the truck tips instead
+of gripping, so do not let the player select that.
+
+Work:
+
+1. Truck: add a small Setup struct (grip and top speed, and anything else you
+   judge belongs) and a setter for it. The current values are m_grip 1.10 and
+   m_topSpeed 40.0; keep those as setup 3.
+
+2. Game: hold the current setup, expose it, and keep it across reset() so the
+   player does not lose their choice when restarting. Do not reset it on
+   recover() either.
+
+3. wasm: export a function to select the setup by index.
+
+4. docs/monster.js: bind Digit1 to Digit5, and show the current setup in the HUD
+   (name and a short hint, for example "TYRES 2 SOFT  grip 1.18 / top 36").
+   Update the on-screen help line.
+
+5. The HUD string format changes, so update tests/smoke.mjs to match.
+
+Tests to add:
+- A softer setup measurably reduces sideslip in a sustained full-lock corner
+  compared with a harder one. Run this on empty ground well clear of the
+  circuit: a turn circle started near the track sweeps back over the wreck at
+  x = 35 and the collision, not the tyres, then decides the result.
+- A harder setup reaches a higher speed on the straight.
+- Out-of-range setup indices are rejected or clamped, not silently accepted.
+- No setup allows a sustained full-lock corner to tip the truck (up().y stays
+  above 0.9).
+<<< TO HERE <<<
+
+
+================================================================================
+PROMPT 3 OF 8 - RACER REFACTOR (NO NEW BEHAVIOUR)
+================================================================================
+Model:   Fable 5.2
+WHY:     Wide-reaching structural change that touches every file. A wrong call
+         here propagates into prompts 4, 5 and 6 and is annoying to undo.
+Depends: prompt 1 (checkpoint state becomes per-racer)
+Size:    ~150 lines changed, little net new
+
+>>> COPY FROM HERE >>>
+Refactor Monster so the game owns a list of racers instead of a single truck.
+Add NO new behaviour in this step: no AI, no opponents, no collision between
+trucks. The game must play exactly as it does now when you are finished.
+
+Right now Game holds one Truck, one Judge, one m_progress, one m_lap, one set of
+lap times, one checkpoint record and one Controls. All of that is per-racer.
+
+Work:
+
+1. Introduce a Racer type holding: the Truck, its Judge, progress index, lap
+   number, current and best lap time, checkpoints passed, its Controls, a
+   display colour and a short name.
+
+2. Game holds a std::vector<Racer> with exactly one entry, the player at
+   index 0. Keep every existing public accessor on Game working by delegating to
+   racer 0, so wasm_api.cpp and the existing tests need as few edits as
+   possible. Add accessors for the racer list alongside them.
+
+3. Move the per-racer logic (progress, laps, checkpoints, wreck detection,
+   recovery) out of Game's body and into functions that take a Racer, so that
+   adding more racers later is a loop rather than a rewrite.
+
+4. Scene::addTruck takes a colour, and Scene draws every racer. With one racer
+   the output must be identical.
+
+5. Leave tests/Autopilot.* where it is for now. Prompt 5 moves it.
+
+Acceptance:
+- The entire existing test suite passes with no changes to its assertions.
+- The autopilot lap time and final score are unchanged (they were 56.4 s and
+  1398 before checkpoints were added; report the current numbers before and
+  after your refactor and show they match).
+- make wasm and node tests/smoke.mjs pass unchanged.
+- Add one test that the racer list has exactly one entry and that the Game
+  accessors agree with racer 0.
+
+If you find yourself wanting to change behaviour to make the refactor cleaner,
+stop and say so instead. This step is valuable precisely because it is
+behaviour-preserving.
+<<< TO HERE <<<
+
+
+================================================================================
+PROMPT 4 OF 8 - SPLIT STATIC AND DYNAMIC GEOMETRY
+================================================================================
+Model:   Opus 5
+Why:     Self-contained performance work with an obvious correctness test
+         (the picture must not change).
+Depends: prompt 3 (the static/dynamic boundary is clearer after it)
+Size:    ~80 lines
+
+>>> COPY FROM HERE >>>
+Scene::build currently rebuilds the entire world mesh in C++ every frame, trees
+and mountains included, with no culling or caching. That is about 31,000
+vertices per frame today and it scales linearly with everything added later.
+Split it so static geometry is built once and uploaded once.
+
+Work:
+
+1. Scene keeps two meshes. Static: the ground, road faces, lane markings, jump
+   ramps, trees, mountains and checkpoint gates. Dynamic: the trucks and the
+   wreck (the wreck deforms as it is crushed, so it is dynamic).
+
+2. Build the static mesh once, on the first build or on an explicit prepare
+   step, and rebuild it only when the world actually changes (a reset that
+   restores the wreck does not change static geometry).
+
+3. The ground tiles currently follow the camera. Make the tiled area static by
+   covering the track bounds plus a margin, and keep the large far-field quad
+   static as well. Check that the horizon still looks right from everywhere on
+   the circuit, including the top of the loop and the bridge.
+
+4. wasm: export the two buffers separately, with their own pointers and counts,
+   so JavaScript can upload the static one once instead of every frame.
+
+5. docs/monster.js: two GL buffers and two draw calls. Upload the static buffer
+   once after init, the dynamic buffer each frame.
+
+Acceptance:
+- The rendered frame is unchanged. Verify by screenshot comparison in headless
+  Chrome at several points on the circuit, not by reasoning alone.
+- Report the static and dynamic vertex counts, and how many bytes per frame are
+  now uploaded compared with before.
+- All existing tests still pass.
+<<< TO HERE <<<
+
+
+================================================================================
+PROMPT 5 OF 8 - OPPONENTS
+================================================================================
+Model:   Fable 5.2
+Why:     The one genuinely architectural feature. Contact handling between
+         trucks is where this project could quietly stop being small, and that
+         judgement call is worth the stronger model.
+Depends: prompt 3 (required), prompts 1 and 4 (strongly preferred)
+Size:    ~600-800 new lines
+
+>>> COPY FROM HERE >>>
+Add three computer-driven opponents and turn Monster into a three-lap race.
+
+Starting point: tests/Autopilot.* is already a working driver. It is 89 lines,
+follows the centreline with a look-ahead target, brakes for bends, holds the
+wheels straight through the loop, and completes a clean lap. Promote it to
+src/ as the opponent driver rather than writing a new one.
+
+Work:
+
+1. Move Autopilot into src/ as the driver for a Racer. Give it a parameter set
+   (look-ahead distance, steering gain, corner speed, braking deceleration,
+   planning distance, and a throttle cap) so difficulty can be varied later.
+   For this step, give the three opponents visibly different but roughly
+   plausible parameters; prompt 6 tunes them properly.
+
+2. Four racers: the player plus three opponents, each a different colour, lined
+   up on a staggered grid behind the start line. The opponents must pass the
+   same checkpoints in the same order as the player to be credited a lap.
+
+3. Truck-to-truck contact. Design decision already made, implement this and not
+   something more ambitious: approximate each truck with a few spheres along its
+   body, and when spheres of two trucks overlap, apply equal and opposite
+   push-apart forces (a spring along the contact normal plus damping along the
+   relative velocity) through the existing force accumulation in Truck::step.
+   Do not build a general contact solver or an impulse-based collision system.
+   Contact should feel like bumping, and must never launch a truck into the air
+   or push one through the road.
+
+4. Race state: three laps, finish order, and the race ending when the player
+   finishes. Track each racer's position in the field. R restarts the whole
+   race, opponents included, from the grid.
+
+5. HUD: the player's position in the field (for example "P2/4"), lap "2/3", and
+   the result when the race ends.
+
+Watch out for:
+- Recovery and the wrecked state are per-racer now. An opponent that rolls over
+  must recover the same way the player does, or it will block the circuit.
+- The ray-cast collision world only contains static geometry. Trucks are not in
+  it, which is why contact is handled separately.
+- Performance: four trucks at 240 Hz is about 40,000 ray casts per second.
+  Measure the frame time and report it; if the fixed step becomes the
+  bottleneck, say so rather than silently lowering it.
+
+Tests to add:
+- All four racers complete three laps within a sensible time window and none
+  falls through the world or ends the race stuck.
+- Every credited lap passed all five checkpoints.
+- Two trucks driven into each other separate, neither leaves the ground, and
+  neither ends up below the road surface.
+- Resetting restores all four racers to the grid with zero laps.
+<<< TO HERE <<<
+
+
+================================================================================
+PROMPT 6 OF 8 - DIFFICULTY TIERS AND RACE HUD
+================================================================================
+Model:   Opus 5
+Why:     Parameter tuning and presentation on top of a structure that already
+         exists. Small diffs, measurable targets.
+Depends: prompt 5
+Size:    ~150 lines
+
+>>> COPY FROM HERE >>>
+Tune the three opponents into clearly distinct hard, medium and easy drivers,
+and finish the race presentation.
+
+Work:
+
+1. Give each opponent a named difficulty with its own driver parameters. Target
+   a clear spread in clean lap times, roughly: hard a little quicker than a good
+   human lap, medium noticeably slower, easy slower again. Measure real lap
+   times and pick the parameters from the measurements rather than guessing.
+   Vary driving behaviour (corner entry speed, braking margin, line, throttle
+   cap), not the physics. Do not give opponents more grip than the player can
+   select; a cheating opponent is obvious to play against.
+
+2. Make the easy opponent occasionally imperfect rather than uniformly slow:
+   braking later than ideal or carrying too little speed into the loop reads as
+   a weaker driver, while a slow but flawless lap just reads as a slow car.
+
+3. HUD: position in the field, lap number out of three, and the gap in seconds
+   to the racer ahead. A results list when the race finishes, showing finishing
+   order and each racer's best lap.
+
+4. Show the opponents' colours in the HUD so the player can tell who is who.
+
+Tests to add:
+- Over a full three-lap race with the player standing still, the three opponents
+  finish in the order hard, medium, easy, with a margin large enough that the
+  result is not noise. Run it and report the actual times.
+- Each opponent's best lap falls inside the band you targeted.
+- The gap calculation is right when racers are on different laps.
+<<< TO HERE <<<
+
+
+================================================================================
+PROMPT 7 OF 8 - GREEN AND DESERT HALVES
+================================================================================
+Model:   Opus 5
+Why:     Cosmetic, self-contained, no collision or physics involvement.
+Depends: prompt 4 (so the new scenery lands in the static mesh)
+Size:    ~80 lines
+
+>>> COPY FROM HERE >>>
+Split the world into two biomes: the current green landscape and a desert.
+
+Work:
+
+1. Add a single function that answers which biome a world position is in, and
+   drive everything off it. A straight boundary is fine; place it so that a
+   decent stretch of the circuit runs through each half.
+
+2. Colour the ground tiles, the far-field quad and the mountains from the biome.
+   Blend or dither the tiles near the boundary if a hard line looks wrong, but
+   do not spend long on it.
+
+3. Replace the pines with desert scenery on the desert side: cacti and rocks
+   built from the existing addBox and addPyramid helpers. Keep the same planting
+   logic (jittered grid, cleared away from the road).
+
+4. Leave the road surface, collision and physics untouched. This is purely what
+   the scene builder emits.
+
+Acceptance:
+- Screenshots from both halves and from the boundary, taken in headless Chrome.
+- Report the change in static vertex count.
+- All existing tests still pass.
+<<< TO HERE <<<
+
+
+================================================================================
+PROMPT 8 OF 8 - MOUNTAIN TUNNEL (OPTIONAL)
+================================================================================
+Model:   Fable 5.2
+Why:     Geometry reasoning that changes the track layout itself, so it
+         interacts with the loop, the bridge and the checkpoint placement.
+Depends: prompts 1 and 7
+Size:    ~200 lines
+
+>>> COPY FROM HERE >>>
+Run the circuit through a mountain ridge twice, once from the green side into
+the desert and once back, with a tunnel at each crossing.
+
+Two things make this easier than it sounds, use both:
+- Collision is ray casts against triangles, so a tunnel ceiling needs no special
+  case. The old height map could not have represented one.
+- Terrain::buildRoad already switches on PathPoint::Kind to add walls under
+  embankments and leave the span open under the bridge. A Tunnel kind that adds
+  side walls and a roof is a natural extension of the same code.
+
+Do not model a solid mountain with a bore drilled through it. Build the ridge as
+two mountain masses with a gap between them, put a portal facade at each end of
+the gap, and run an enclosed road section between them. From inside the truck it
+is indistinguishable, and it is a fraction of the work.
+
+Work:
+
+1. Add PathPoint::Kind::Tunnel and place two tunnel sections in the Track
+   layout, positioned so the ridge separates the green and desert halves from
+   prompt 7. Keep the existing loop and bridge intact and check the circuit
+   still closes.
+
+2. Build the tunnel: side walls, a ceiling high enough to drive under but low
+   enough to feel enclosed, and portal faces at each end. Darken the baked
+   vertex colours inside so it reads as a tunnel rather than a corridor.
+
+3. Put a checkpoint on each side of each tunnel. Re-space the existing
+   checkpoints if needed.
+
+4. Build the ridge itself from the existing mountain geometry, scaled and placed
+   so the portals sit in its flank.
+
+Tests to add:
+- A ray cast straight up from inside the tunnel hits the ceiling, and one from
+  just outside the portal does not.
+- A truck driven at full speed through the tunnel cannot leave through the roof.
+- The autopilot still completes a clean lap, and the circuit still closes to
+  within a millimetre.
+- The loop and bridge still work as before.
+
+Report the new lap distance and autopilot lap time, and include screenshots of
+both portals and the inside of a tunnel.
+<<< TO HERE <<<
+
+
+================================================================================
+NOTES
+================================================================================
+
+If a prompt produces too large a change to review comfortably, the natural
+split points are:
+
+  Prompt 1  gate geometry and digits, then the lap rule
+  Prompt 5  the driver and four racers first, contact between trucks second
+  Prompt 8  the tunnel geometry first, the ridge and checkpoints second
+
+Prompt 3 is the one not to skip or merge into prompt 5. Doing the refactor on
+its own, with the whole test suite green and the autopilot lap time unchanged,
+is what keeps the opponents diff small enough to read.
+
+Expected growth: src goes from about 2,650 lines to roughly 4,200. The frame
+goes from about 31,000 vertices to about 48,000, which is still nothing for any
+GPU of the last fifteen years. The cost that actually scales is the per-frame
+mesh rebuild in C++, which is what prompt 4 removes.
