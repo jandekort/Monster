@@ -36,8 +36,10 @@ bridge are driven.
 
 The bridge deck is missing for five metres over the tunnel, so the bridge has to
 be taken with enough speed to carry across it. A dirt road runs alongside the
-bridge on its right, sunk into the ground; the road out of the tunnel jumps over
-it between the two yellow ramps.
+bridge on its right, sunk into a cutting with grass banks; the road out of the
+tunnel jumps over it between the two yellow ramps. Curved slip roads join it to
+the edge of the main road before the bridge climbs and after it comes down, and
+run into the ends of the cutting, so the dirt road is a way round the hole.
 
 The going differs by surface. The road and the bridge are quickest, the dirt
 road a little slower, and the grass slower still, so cutting a corner costs more

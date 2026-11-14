@@ -136,9 +136,9 @@ Terrain::Terrain()
     m_track()
     , m_dirt()
     , m_dirtOffset(30.5)
-    , m_dirtTile(3.5)
-    , m_rampHalfWidth(4.0)
-    , m_rampReach(20.0)
+    , m_dirtColumns(3)
+    , m_slipGap(0.3)
+    , m_dirtPath()
     , m_slabs()
     , m_wrecks()
     , m_wreckCount(3)
@@ -166,7 +166,7 @@ Terrain::Terrain()
     placeWrecks();
     buildRoad();
     buildDirtRoad();
-    buildRamps();
+    buildSlipRoads();
     buildSlabs();
     buildGrid();
 }
@@ -190,87 +190,123 @@ void Terrain::placeDirtRoad()
     }
 }
 
-// Tiled in two shades, in squares smaller than the grass, so it reads as a dirt track
+// The cutting: a floor of dirt tiles in two shades, smaller than the grass tiles, between two
+// grass banks
 void Terrain::buildDirtRoad()
 {
-    const int across = (int) std::ceil(2.0 * m_dirt.halfWidth() / m_dirtTile);
-    const int along = (int) std::ceil(2.0 * m_dirt.m_halfLength / m_dirtTile);
-    const double stepAcross = 2.0 * m_dirt.halfWidth() / across;
-    const double stepAlong = 2.0 * m_dirt.m_halfLength / along;
-    const auto corner = [&](int i, int j)
+    const double tile = 2.0 * m_dirt.m_halfFloor / m_dirtColumns;
+    const int rows = (int) std::ceil(2.0 * m_dirt.m_halfLength / tile);
+    const double step = 2.0 * m_dirt.m_halfLength / rows;
+    const auto corner = [&](double across, int row)
     {
-        const Vec3 flat = m_dirt.m_centre
-            + m_dirt.m_cross * (-m_dirt.halfWidth() + stepAcross * i)
-            + m_dirt.m_forward * (-m_dirt.m_halfLength + stepAlong * j);
+        const Vec3 flat = m_dirt.m_centre + m_dirt.m_cross * across
+            + m_dirt.m_forward * (-m_dirt.m_halfLength + step * row);
         return flat + Vec3(0.0, m_dirt.height(flat), 0.0);
     };
-
-    for (int i = 0; i < across; ++i)
+    const auto strip = [&](double from, double to, int row, Face::Surface surface)
     {
-        for (int j = 0; j < along; ++j)
+        addFace(Face(corner(from, row), corner(to, row), corner(to, row + 1), corner(from, row + 1), surface, true));
+    };
+
+    for (int row = 0; row < rows; ++row)
+    {
+        for (int column = 0; column < m_dirtColumns; ++column)
         {
-            // Only the flat bottom of the cutting is dirt; its sides stay grass
-            const double across = -m_dirt.halfWidth() + stepAcross * (i + 0.5);
-            const Face::Surface shade = std::fabs(across) > m_dirt.m_halfFloor
-                ? Face::Surface::Bank
-                : (((i + j) & 1) != 0 ? Face::Surface::DirtPale : Face::Surface::DirtDark);
-            addFace(Face(corner(i, j), corner(i, j + 1), corner(i + 1, j + 1), corner(i + 1, j), shade, true));
+            const double from = -m_dirt.m_halfFloor + tile * column;
+            strip(from, from + tile, row,
+                ((column + row) & 1) != 0 ? Face::Surface::DirtPale : Face::Surface::DirtDark);
         }
+        strip(-m_dirt.halfWidth(), -m_dirt.m_halfFloor, row, Face::Surface::Bank);
+        strip(m_dirt.m_halfFloor, m_dirt.halfWidth(), row, Face::Surface::Bank);
+        m_dirtPath.push_back(corner(0.0, row));
     }
 }
 
-// Slip roads joining the main road to the dirt road, before the bridge rises and after it comes
-// back down, so the dirt road is a way round the broken bridge rather than a ditch beside it
-void Terrain::buildRamps()
+// Slip roads make the dirt road a way round the broken bridge. One leaves the right hand edge of
+// the main road before the bridge starts to climb, swings out and runs straight into the end of
+// the cutting; the other comes out of the far end and swings back to the edge of the main road
+// beyond the bridge. They run alongside the main road where they meet it, never across it.
+void Terrain::buildSlipRoads()
 {
     const std::vector<PathPoint>& points = m_track.getPoints();
-    const PathPoint& gap = m_track.getGapCentre();
-    const size_t centre = (size_t) (&gap - &points.front());
-
-    size_t before = centre;
-    while (before > 0 && points[before].m_kind != PathPoint::Kind::Flat)
+    const size_t centre = (size_t) (&m_track.getGapCentre() - &points.front());
+    const auto plain = [&](size_t index)
     {
-        --before;
-    }
-    size_t after = centre;
-    while (after + 1 < points.size() && points[after].m_kind != PathPoint::Kind::Flat)
-    {
-        ++after;
-    }
-    require(before < centre && after > centre, "Terrain::buildRamps: the bridge has no ends at ground level");
-
-    // Where the slip road meets the dirt road, measured along it from where the main road leaves
-    const auto meeting = [&](const Vec3& leaving, double along)
-    {
-        return m_dirt.m_centre
-            + m_dirt.m_forward * (dot(leaving - m_dirt.m_centre, m_dirt.m_forward) + along);
+        return points[index].m_kind == PathPoint::Kind::Flat && !points[index].m_corner;
     };
 
-    const double edge = m_track.getHalfWidth();
-    const Vec3 off = points[before].m_position + points[before].m_cross * edge;
-    const Vec3 on = points[after].m_position + points[after].m_cross * edge;
-    buildRamp(off, meeting(off, m_rampReach));
-    buildRamp(meeting(on, -m_rampReach), on);
+    // The straight, level road either side of the bridge
+    size_t leave = centre;
+    while (leave > 0 && !plain(leave))
+    {
+        --leave;
+    }
+    while (leave > 1 && plain(leave - 2))
+    {
+        --leave;
+    }
+    size_t rejoin = centre;
+    while (rejoin + 1 < points.size() && !plain(rejoin))
+    {
+        ++rejoin;
+    }
+    while (rejoin + 3 < points.size() && plain(rejoin + 2))
+    {
+        ++rejoin;
+    }
+    require(leave < centre && rejoin > centre, "Terrain::buildSlipRoads: no level road beside the bridge");
+
+    const double aside = m_track.getHalfWidth() + m_dirt.m_halfFloor + m_slipGap;
+    const int rows = (int) m_dirtPath.size();
+    const std::vector<Vec3> cutting = m_dirtPath;
+    m_dirtPath.clear();
+
+    buildSlipRoad(points[leave].m_position + points[leave].m_cross * aside, points[leave].m_forward,
+        m_dirt.m_centre - m_dirt.m_forward * m_dirt.m_halfLength, m_dirt.m_forward, 0);
+    m_dirtPath.insert(m_dirtPath.end(), cutting.begin(), cutting.end());
+    buildSlipRoad(m_dirt.m_centre + m_dirt.m_forward * m_dirt.m_halfLength, m_dirt.m_forward,
+        points[rejoin].m_position + points[rejoin].m_cross * aside, points[rejoin].m_forward, rows);
 }
 
-// Laid on the ground and following the side of the cutting down, so it is never buried
-void Terrain::buildRamp(const Vec3& from, const Vec3& to)
+// A curve that leaves one point in one direction and arrives at the other in another, tiled like
+// the floor of the cutting. shade continues the chequer from whatever it joins on to.
+void Terrain::buildSlipRoad(const Vec3& from, const Vec3& leaving, const Vec3& to, const Vec3& arriving, int shade)
 {
-    const Vec3 along = to - from;
-    const int steps = std::max(1, (int) std::ceil(length(along) / m_dirtTile));
-    const Vec3 side = normalize(cross(Vec3(0.0, 1.0, 0.0), normalize(along))) * m_rampHalfWidth;
-    const auto lay = [&](const Vec3& point)
+    const double reach = length(to - from);
+    const double tile = 2.0 * m_dirt.m_halfFloor / m_dirtColumns;
+    const int rows = std::max(1, (int) std::ceil(1.1 * reach / tile));
+    const double lift = 0.02; // clear of the grass it lies on
+
+    // Cubic Hermite curve: position and direction at a fraction t of the way
+    const auto station = [&](double t, Vec3& position, Vec3& across)
     {
-        const Vec3 flat(point.x, 0.0, point.z);
-        return flat + Vec3(0.0, m_dirt.height(flat) + 0.02, 0.0);
+        const double t2 = t * t;
+        const double t3 = t2 * t;
+        position = from * (2.0*t3 - 3.0*t2 + 1.0) + leaving * (reach * (t3 - 2.0*t2 + t))
+            + to * (-2.0*t3 + 3.0*t2) + arriving * (reach * (t3 - t2));
+        const Vec3 along = normalize(from * (6.0*t2 - 6.0*t) + leaving * (reach * (3.0*t2 - 4.0*t + 1.0))
+            + to * (-6.0*t2 + 6.0*t) + arriving * (reach * (3.0*t2 - 2.0*t)), leaving);
+        across = Vec3(-along.z, 0.0, along.x);
+        position.y = lift;
     };
 
-    for (int i = 0; i < steps; ++i)
+    for (int row = 0; row < rows; ++row)
     {
-        const Vec3 a = from + along * (i / (double) steps);
-        const Vec3 b = from + along * ((i + 1) / (double) steps);
-        addFace(Face(lay(a - side), lay(b - side), lay(b + side), lay(a + side),
-            (i & 1) != 0 ? Face::Surface::DirtPale : Face::Surface::DirtDark, true));
+        Vec3 p;
+        Vec3 pAcross;
+        Vec3 q;
+        Vec3 qAcross;
+        station(row / (double) rows, p, pAcross);
+        station((row + 1) / (double) rows, q, qAcross);
+        for (int column = 0; column < m_dirtColumns; ++column)
+        {
+            const double near = -m_dirt.m_halfFloor + tile * column;
+            addFace(Face(p + pAcross * near, p + pAcross * (near + tile),
+                q + qAcross * (near + tile), q + qAcross * near,
+                ((column + row + shade + (shade == 0 ? rows : 0)) & 1) != 0
+                    ? Face::Surface::DirtPale : Face::Surface::DirtDark, true));
+        }
+        m_dirtPath.push_back(p);
     }
 }
 

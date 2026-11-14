@@ -138,7 +138,7 @@ void Scene::build(const Game& game, const Vec3& eye)
     {
         addWreck(wreck);
     }
-    plantTrees(game.getTerrain().getTrack());
+    plantTrees(game.getTerrain());
     addScenery();
     for (const Racer& racer : game.getRacers())
     {
@@ -256,13 +256,18 @@ void Scene::addFaces(const Terrain& terrain)
             color = dirtDark;
             break;
         case Face::Surface::Bank:
-            color = Color(0.28f, 0.58f, 0.24f); // the grass the cutting is dug out of
+            color = Color(0.30f, 0.62f, 0.26f); // the grass of the field the cutting is dug out of
             break;
         default:
             require(false, "Scene::addFaces: unknown surface");
         }
         const Vec3 offset = face.m_normal * lift;
-        m_mesh.addQuad(face.m_a + offset, face.m_b + offset, face.m_c + offset, face.m_d + offset, color, face.m_normal);
+        // The dirt road and its banks are lit as level ground, so that they are one colour from
+        // end to end and the banks match the field, whichever way a tile happens to slope
+        const bool earth = face.m_surface == Face::Surface::DirtPale || face.m_surface == Face::Surface::DirtDark
+            || face.m_surface == Face::Surface::Bank;
+        m_mesh.addQuad(face.m_a + offset, face.m_b + offset, face.m_c + offset, face.m_d + offset, color,
+            earth ? Vec3(0.0, 1.0, 0.0) : face.m_normal);
     }
 }
 
@@ -393,8 +398,9 @@ void Scene::addGlyph(const Vec3& center, const Vec3& right, const Vec3& up, doub
 }
 
 // Trees on a jittered grid, kept clear of the road
-void Scene::plantTrees(const Track& track)
+void Scene::plantTrees(const Terrain& terrain)
 {
+    const Track& track = terrain.getTrack();
     if (m_planted)
     {
         return;
@@ -431,7 +437,14 @@ void Scene::plantTrees(const Track& track)
                     const double dz = point.m_position.z - foot.z;
                     return dx*dx + dz*dz > m_treeClearance*m_treeClearance;
                 });
-            if (clear && (seed * 29) % 5 != 0)
+            const bool offTheDirt = std::all_of(terrain.getDirtPath().begin(), terrain.getDirtPath().end(),
+                [&](const Vec3& point)
+                {
+                    const double dx = point.x - foot.x;
+                    const double dz = point.z - foot.z;
+                    return dx*dx + dz*dz > 0.5 * m_treeClearance*m_treeClearance;
+                });
+            if (clear && offTheDirt && (seed * 29) % 5 != 0)
             {
                 m_trees.push_back(Vec3(foot.x, 1.0 + 0.1 * ((seed * 5) % 7), foot.z));
             }

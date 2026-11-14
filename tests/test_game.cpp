@@ -350,19 +350,95 @@ int main()
             Terrain ground;
             Truck truck;
             truck.placeAt(from, forward, Vec3(0.0, 1.0, 0.0));
-            for (double t = 0.0; t < 6.0; t += 1.0 / 240.0)
+            for (double t = 0.0; t < 3.0; t += 1.0 / 240.0)
             {
                 truck.step(1.0 / 240.0, drive(1.0, 0.0, 0.0), ground);
             }
             return truck.getSpeed();
         };
         const Truck standing;
-        const double onTheDirt = after(dirt.m_centre - dirt.m_forward * 45.0
+        const double onTheDirt = after(dirt.m_centre - dirt.m_forward * 15.0
             + Vec3(0.0, dirt.height(dirt.m_centre) + standing.getRideHeight(), 0.0), dirt.m_forward);
         const double onTheGrass = after(Vec3(0.0, standing.getRideHeight(), 200.0), Vec3(1.0, 0.0, 0.0));
-        std::cout << "    after six seconds: dirt " << onTheDirt << " m/s, grass " << onTheGrass
+        std::cout << "    after three seconds: dirt " << onTheDirt << " m/s, grass " << onTheGrass
             << " m/s" << std::endl;
         check(onTheDirt > onTheGrass + 0.5, "the truck gets along faster on the dirt road than on the grass");
+    }
+
+    std::cout << "Dirt road round the bridge" << std::endl;
+    {
+        Terrain terrain;
+        const Track& track = terrain.getTrack();
+        const DirtRoad& dirt = terrain.getDirtRoad();
+        const std::vector<Vec3>& path = terrain.getDirtPath();
+        const std::vector<PathPoint>& points = track.getPoints();
+        const double onDirt = Face::traction(Face::Surface::DirtPale);
+        const Vec3 down(0.0, -1.0, 0.0);
+
+        // Dirt under every step of the way, from one edge of the main road to the other
+        bool unbroken = true;
+        double longestStep = 0.0;
+        for (size_t i = 0; i < path.size(); ++i)
+        {
+            Hit hit;
+            unbroken = unbroken && terrain.raycast(path[i] + Vec3(0.0, 4.0, 0.0), down, 20.0, hit)
+                && std::fabs(hit.m_traction - onDirt) < 1.0e-9;
+            if (i > 0)
+            {
+                longestStep = std::max(longestStep, length(path[i] - path[i - 1]));
+            }
+        }
+        check(path.size() > 40 && unbroken, "the dirt road is dirt all the way along");
+        check(longestStep < 4.0, "in one piece, with no jumps in it");
+
+        // It starts and ends beside the main road, either side of the bridge, without lying on it
+        const auto nearestRoad = [&](const Vec3& point)
+        {
+            double nearest = 1.0e9;
+            for (const PathPoint& road : points)
+            {
+                if (road.m_kind == PathPoint::Kind::Flat && !dirt.contains(road.m_position))
+                {
+                    const double dx = road.m_position.x - point.x;
+                    const double dz = road.m_position.z - point.z;
+                    nearest = std::min(nearest, std::sqrt(dx*dx + dz*dz));
+                }
+            }
+            return nearest;
+        };
+        double closest = 1.0e9;
+        for (const Face& face : terrain.getFaces())
+        {
+            if (face.m_surface == Face::Surface::DirtPale || face.m_surface == Face::Surface::DirtDark)
+            {
+                // The cutting itself passes under the jump, where the main road is cut on purpose:
+                // it is the slip roads outside it that must keep off the tarmac
+                for (const Vec3& vertex : { face.m_a, face.m_b, face.m_c, face.m_d })
+                {
+                    if (!dirt.contains(vertex))
+                    {
+                        closest = std::min(closest, nearestRoad(vertex));
+                    }
+                }
+            }
+        }
+        const PathPoint& gap = track.getGapCentre();
+        std::cout << "    " << path.size() << " steps, nearest the dirt comes to the middle of the main road "
+            << closest << " m (the road is " << track.getHalfWidth() << " m to its edge)" << std::endl;
+        check(closest > track.getHalfWidth(), "the dirt road never overlaps the main road");
+        check(closest < track.getHalfWidth() + 1.5, "but runs right up to its edge");
+        check(dot(path.front() - gap.m_position, gap.m_forward) < -40.0
+            && dot(path.back() - gap.m_position, gap.m_forward) > 40.0,
+            "leaving it before the bridge and rejoining after");
+
+        // and it enters the cutting through its ends, not over its sides
+        const Vec3 mouth = dirt.m_centre - dirt.m_forward * dirt.m_halfLength;
+        bool throughTheEnd = false;
+        for (const Vec3& point : path)
+        {
+            throughTheEnd = throughTheEnd || length(Vec3(point.x - mouth.x, 0.0, point.z - mouth.z)) < 1.5;
+        }
+        check(throughTheEnd, "it runs into the end of the cutting, down its entrance ramp");
     }
 
     std::cout << "Tyre setups" << std::endl;

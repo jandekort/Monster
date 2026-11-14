@@ -107,8 +107,8 @@ struct DirtRoad
     Vec3 m_cross;       // across it
     double m_halfFloor = 4.0;
     double m_slopeRun = 2.5;  // horizontal run of the banks, each side
-    double m_halfLength = 60.0;
-    double m_endRun = 10.0;   // the ends climb back to ground level over this distance
+    double m_halfLength = 30.0;
+    double m_endRun = 12.0;   // the ends climb back to ground level over this distance
     double m_depth = 1.7;
 
     double halfWidth() const { return m_halfFloor + m_slopeRun; }
@@ -136,6 +136,7 @@ public:
     const std::vector<Wreck>& getWrecks() const { return m_wrecks; }
     double getCrush() const;
     const DirtRoad& getDirtRoad() const { return m_dirt; }
+    const std::vector<Vec3>& getDirtPath() const { return m_dirtPath; } // centreline, road to road
     double groundFloor(const Vec3& point) const; // solid ground under a point, 0 off the dirt road // how far through the row of wrecks, 0->all intact, 1->all flat
 
 private:
@@ -151,8 +152,8 @@ private:
 
     void placeDirtRoad();
     void buildDirtRoad();
-    void buildRamps();
-    void buildRamp(const Vec3& from, const Vec3& to);
+    void buildSlipRoads();
+    void buildSlipRoad(const Vec3& from, const Vec3& leaving, const Vec3& to, const Vec3& arriving, int shade);
     void placeWrecks();
     void buildRoad();
     void buildSlabs();
@@ -164,9 +165,9 @@ private:
     Track m_track;
     DirtRoad m_dirt;
     double m_dirtOffset;  // from the bridge to the dirt road, to its right [m]
-    double m_dirtTile;    // side of one tile of the dirt road [m]
-    double m_rampHalfWidth; // of the slip roads onto and off the dirt road [m]
-    double m_rampReach;     // how far along the dirt road a slip road runs out [m]
+    int m_dirtColumns;    // tiles across the floor of the dirt road
+    double m_slipGap;     // left between a slip road and the edge of the main road [m]
+    std::vector<Vec3> m_dirtPath;
     std::vector<Slab> m_slabs;
     std::vector<Wreck> m_wrecks;
     size_t m_wreckCount;

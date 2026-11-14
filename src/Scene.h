@@ -68,7 +68,7 @@ private:
         const char* text, const Color& color);
     void addGlyph(const Vec3& center, const Vec3& right, const Vec3& up, double pixel,
         const unsigned char* rows, const Color& color);
-    void plantTrees(const Track& track);
+    void plantTrees(const Terrain& terrain);
     void addWreck(const Wreck& wreck);
     void addScenery();
     void addTruck(const Truck& truck, const Color& paint);
