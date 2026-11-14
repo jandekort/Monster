@@ -56,6 +56,8 @@ Game::Game(size_t opponents)
     , m_gridRow(5.5)
     , m_gridLane(2.5)
     , m_stuckDelay(6.0)
+    , m_detourShare(0.75)
+    , m_dice(20261114u)
     , m_raceClock(0.0)
     , m_finishers(0)
     , m_crushClock(-1.0)
@@ -90,6 +92,7 @@ void Game::reset()
     m_crushClock = -1.0;
     m_raceClock = 0.0;
     m_finishers = 0;
+    m_dice = 20261114u;
     for (Racer& racer : m_racers)
     {
         resetRacer(racer);
@@ -114,6 +117,8 @@ void Game::resetRacer(Racer& racer)
     racer.m_crushShare = 0.0;
     racer.m_flattened = false;
     racer.m_stuckClock = 0.0;
+    racer.m_detour = false;
+    racer.m_routeLap = 0;
     racer.m_finished = false;
     racer.m_finishPlace = 0;
     racer.m_finishTime = 0.0;
@@ -154,10 +159,25 @@ void Game::placeOnTrack(Racer& racer, size_t index)
         --index;
     }
 
-    const PathPoint& point = points[index];
+    // and so is a spot another truck is standing on: step back along the road until it is clear
+    const auto place = [&](size_t at)
+    {
+        const PathPoint& point = points[at];
+        racer.m_truck.placeAt(point.m_position + point.m_normal * racer.m_truck.getRideHeight(),
+            point.m_forward, point.m_normal);
+    };
+    const auto taken = [&]()
+    {
+        return std::any_of(m_racers.begin(), m_racers.end(),
+            [&](const Racer& other) { return &other != &racer && Truck::overlap(racer.m_truck, other.m_truck) > 0.0; });
+    };
+    place(index);
+    for (int tries = 0; tries < 6 && taken() && index >= 4; ++tries)
+    {
+        index -= 4;
+        place(index);
+    }
     racer.m_progress = index;
-    racer.m_truck.placeAt(point.m_position + point.m_normal * racer.m_truck.getRideHeight(),
-        point.m_forward, point.m_normal);
     racer.m_judge.settle();
     racer.m_tippedClock = 0.0;
     racer.m_wreckedClock = 0.0;
@@ -195,6 +215,7 @@ void Game::recover(Racer& racer)
         }
     }
     placeOnTrack(racer, target);
+    racer.m_detour = racer.m_driven; // a computer driver that came to grief goes round next time
 }
 
 void Game::step(double elapsed)
@@ -225,6 +246,29 @@ void Game::step(double elapsed)
     m_best = std::max(m_best, getScore());
 }
 
+// Before the bridge a computer driver decides, once a lap, between the dirt road and the jump.
+// Most of the time it takes the dirt road, which is slower: that is the player's chance to pass.
+void Game::chooseRoute(Racer& racer)
+{
+    const size_t leave = m_terrain.getSlipLeave();
+    if (racer.m_progress >= m_terrain.getSlipRejoin())
+    {
+        racer.m_detour = false;
+    }
+    else if (racer.m_routeLap != racer.m_lap && racer.m_progress + 15 >= leave && racer.m_progress < leave)
+    {
+        m_dice = m_dice * 1664525u + 1013904223u;
+        racer.m_routeLap = racer.m_lap;
+        racer.m_detour = ((m_dice >> 8) & 0xFFFFu) / 65536.0 < m_detourShare;
+    }
+}
+
+bool Game::onDetour(const Racer& racer) const
+{
+    return racer.m_detour && racer.m_progress + 2 >= m_terrain.getSlipLeave()
+        && racer.m_progress < m_terrain.getSlipRejoin();
+}
+
 // Trucks are not part of the ray cast world, so contact between them is settled here, pair by
 // pair, before any of them moves
 void Game::collideRacers()
@@ -242,7 +286,10 @@ void Game::stepRacer(Racer& racer)
 {
     if (racer.m_driven)
     {
-        racer.m_controls = racer.m_driver.drive(racer.m_truck, racer.m_progress, m_terrain.getTrack());
+        chooseRoute(racer);
+        racer.m_controls = onDetour(racer)
+            ? racer.m_driver.follow(racer.m_truck, m_terrain.getDirtPath())
+            : racer.m_driver.drive(racer.m_truck, racer.m_progress, m_terrain.getTrack());
     }
 
     Controls controls = racer.m_controls;
@@ -290,7 +337,9 @@ void Game::updateStuck(Racer& racer, size_t progressBefore)
     {
         return;
     }
-    racer.m_stuckClock = racer.m_progress != progressBefore ? 0.0 : racer.m_stuckClock + m_fixedStep;
+    // On the dirt road the lap progress stands still until the main road is reached again
+    const bool moving = racer.m_progress != progressBefore || (onDetour(racer) && racer.m_truck.getSpeed() > 3.0);
+    racer.m_stuckClock = moving ? 0.0 : racer.m_stuckClock + m_fixedStep;
     if (racer.m_stuckClock > m_stuckDelay)
     {
         recover(racer);
@@ -370,6 +419,16 @@ void Game::updateProgress(Racer& racer)
         {
             racer.m_progress = index;
             break;
+        }
+    }
+
+    { // The dirt road round the bridge counts: reaching its far end is reaching the road it rejoins
+        const size_t leave = m_terrain.getSlipLeave();
+        const size_t rejoin = m_terrain.getSlipRejoin();
+        if (racer.m_progress + m_gateWindow >= leave && racer.m_progress < rejoin
+            && length(m_terrain.getDirtPath().back() - racer.m_truck.getPosition()) < m_gateRadius)
+        {
+            racer.m_progress = rejoin;
         }
     }
 

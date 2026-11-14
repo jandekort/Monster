@@ -34,12 +34,21 @@ truck comes out in the exit lane. It needs roughly 75 km/h at the entry.
 Track points must be passed in order, so a lap only counts if the loop and the
 bridge are driven.
 
-The bridge deck is missing for five metres over the tunnel, so the bridge has to
-be taken with enough speed to carry across it. A dirt road runs alongside the
-bridge on its right, sunk into a cutting with grass banks; the road out of the
-tunnel jumps over it between the two yellow ramps. Curved slip roads join it to
-the edge of the main road before the bridge climbs and after it comes down, and
-run into the ends of the cutting, so the dirt road is a way round the hole.
+The bridge deck is missing for six metres at the top of the climb, well before
+the middle of the bridge, and the road kicks up into a lip just before the hole.
+At racing speed the truck flies off the lip and lands on the level deck beyond;
+too slow, and it drops through to the road underneath. A dirt road runs
+alongside the bridge on its right, sunk into a cutting with grass banks in the
+darker of the two grass shades; the road out of the tunnel jumps it between two
+ramps. Two dirt slip roads branch off the main road at an angle, like the arms of a
+junction, before the bridge climbs and after it comes down; they start underneath
+the tarmac, so there is no seam, and run into the ends of the cutting,
+so the dirt road is a way round the hole. Coming out of its far end counts as
+having passed the bridge.
+
+The opponents take the dirt road on three laps out of four, decided afresh
+every lap. It is the slower way round, so the bridge is where the player can
+overtake.
 
 The going differs by surface. The road and the bridge are quickest, the dirt
 road a little slower, and the grass slower still, so cutting a corner costs more

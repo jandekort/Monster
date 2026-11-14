@@ -137,8 +137,12 @@ Terrain::Terrain()
     , m_dirt()
     , m_dirtOffset(30.5)
     , m_dirtColumns(3)
-    , m_slipGap(0.3)
+    , m_slipGap(0.0)
+    , m_slipSplay(0.45)
+    , m_groundSlack(1.0e-4)
     , m_dirtPath()
+    , m_slipLeave(0)
+    , m_slipRejoin(0)
     , m_slabs()
     , m_wrecks()
     , m_wreckCount(3)
@@ -175,8 +179,8 @@ Terrain::Terrain()
 // out of the tunnel jumps over it between the two ramps
 void Terrain::placeDirtRoad()
 {
-    const PathPoint& gap = m_track.getGapCentre();
-    m_dirt.m_forward = gap.m_forward;
+    const PathPoint& gap = m_track.getBridgeCrest();
+    m_dirt.m_forward = Vec3(gap.m_forward.x, 0.0, gap.m_forward.z);
     m_dirt.m_cross = gap.m_cross;
     m_dirt.m_centre = Vec3(gap.m_position.x, 0.0, gap.m_position.z) + gap.m_cross * m_dirtOffset;
 
@@ -229,7 +233,7 @@ void Terrain::buildDirtRoad()
 void Terrain::buildSlipRoads()
 {
     const std::vector<PathPoint>& points = m_track.getPoints();
-    const size_t centre = (size_t) (&m_track.getGapCentre() - &points.front());
+    const size_t centre = (size_t) (&m_track.getBridgeCrest() - &points.front());
     const auto plain = [&](size_t index)
     {
         return points[index].m_kind == PathPoint::Kind::Flat && !points[index].m_corner;
@@ -256,21 +260,27 @@ void Terrain::buildSlipRoads()
     }
     require(leave < centre && rejoin > centre, "Terrain::buildSlipRoads: no level road beside the bridge");
 
-    const double aside = m_track.getHalfWidth() + m_dirt.m_halfFloor + m_slipGap;
+    m_slipLeave = leave;
+    m_slipRejoin = rejoin;
+    // A slip road starts underneath the main road and splays out of its edge, like the arm of a junction
+    const double aside = m_track.getHalfWidth() - m_dirt.m_halfFloor + m_slipGap;
+    const Vec3 turnOff = normalize(points[leave].m_forward + points[leave].m_cross * m_slipSplay, points[leave].m_forward);
+    const Vec3 turnIn = normalize(points[rejoin].m_forward - points[rejoin].m_cross * m_slipSplay, points[rejoin].m_forward);
     const int rows = (int) m_dirtPath.size();
     const std::vector<Vec3> cutting = m_dirtPath;
     m_dirtPath.clear();
 
-    buildSlipRoad(points[leave].m_position + points[leave].m_cross * aside, points[leave].m_forward,
-        m_dirt.m_centre - m_dirt.m_forward * m_dirt.m_halfLength, m_dirt.m_forward, 0);
+    buildSlipRoad(points[leave].m_position + points[leave].m_cross * aside, turnOff,
+        m_dirt.m_centre - m_dirt.m_forward * m_dirt.m_halfLength, m_dirt.m_forward, 0, points[leave]);
     m_dirtPath.insert(m_dirtPath.end(), cutting.begin(), cutting.end());
     buildSlipRoad(m_dirt.m_centre + m_dirt.m_forward * m_dirt.m_halfLength, m_dirt.m_forward,
-        points[rejoin].m_position + points[rejoin].m_cross * aside, points[rejoin].m_forward, rows);
+        points[rejoin].m_position + points[rejoin].m_cross * aside, turnIn, rows, points[rejoin]);
 }
 
 // A curve that leaves one point in one direction and arrives at the other in another, tiled like
 // the floor of the cutting. shade continues the chequer from whatever it joins on to.
-void Terrain::buildSlipRoad(const Vec3& from, const Vec3& leaving, const Vec3& to, const Vec3& arriving, int shade)
+void Terrain::buildSlipRoad(const Vec3& from, const Vec3& leaving, const Vec3& to, const Vec3& arriving, int shade,
+    const PathPoint& junction)
 {
     const double reach = length(to - from);
     const double tile = 2.0 * m_dirt.m_halfFloor / m_dirtColumns;
@@ -301,10 +311,13 @@ void Terrain::buildSlipRoad(const Vec3& from, const Vec3& leaving, const Vec3& t
         for (int column = 0; column < m_dirtColumns; ++column)
         {
             const double near = -m_dirt.m_halfFloor + tile * column;
+            // Where the tile still lies under the main road, the road is what the wheels feel
+            const Vec3 middle = (p + q) * 0.5 + (pAcross + qAcross) * (0.5 * (near + 0.5 * tile));
+            const bool clear = dot(middle - junction.m_position, junction.m_cross) > m_track.getHalfWidth();
             addFace(Face(p + pAcross * near, p + pAcross * (near + tile),
                 q + qAcross * (near + tile), q + qAcross * near,
                 ((column + row + shade + (shade == 0 ? rows : 0)) & 1) != 0
-                    ? Face::Surface::DirtPale : Face::Surface::DirtDark, true));
+                    ? Face::Surface::DirtPale : Face::Surface::DirtDark, clear));
         }
         m_dirtPath.push_back(p);
     }
@@ -391,8 +404,8 @@ void Terrain::buildRoad()
         const bool loop = p.m_kind == PathPoint::Kind::Loop || q.m_kind == PathPoint::Kind::Loop;
         const bool open = p.m_kind == PathPoint::Kind::Bridge && q.m_kind == PathPoint::Kind::Bridge;
 
-        // The ground plane carries flat road; only raised road needs its own surface
-        addFace(Face(pl, pr, qr, ql, Face::Surface::Road, raised));
+        // Level road lies in the ground plane; it is solid all the same, so that it is tarmac to the wheels
+        addFace(Face(pl, pr, qr, ql, Face::Surface::Road, true));
 
         if (raised)
         {
@@ -564,7 +577,7 @@ bool Terrain::raycast(const Vec3& origin, const Vec3& direction, double reach, H
         const double t = direction.y < 0.0 ? -origin.y / direction.y : -1.0;
         if (t >= 0.0 && origin.y >= 0.0 && t <= nearest && !m_dirt.contains(origin + direction * t))
         {
-            nearest = t;
+            nearest = t + m_groundSlack; // whatever lies in the plane, level road say, is felt in its place
             hit.m_distance = t;
             hit.m_point = origin + direction * t;
             hit.m_normal = Vec3(0.0, 1.0, 0.0);

@@ -115,7 +115,7 @@ int main()
             return terrain.raycast(Vec3(x, from, z), down, 100.0, hit) ? hit.m_point.y : -1.0;
         };
         Hit hit;
-        check(heightAt(0.0, 0.0, 5.0) == 0.0, "flat at the start");
+        check(std::fabs(heightAt(0.0, 0.0, 5.0)) < 1.0e-9, "flat at the start");
         check(std::fabs(heightAt(78.5, 0.0, 20.0) - 1.95) < 1.0e-9, "jump ramp is linear");
         check(heightAt(78.5, 6.0, 20.0) == 0.0, "jump ramp has a finite width");
         check(heightAt(92.5, 0.0, 20.0) < -1.0, "the dirt road is sunk between the ramps");
@@ -124,7 +124,7 @@ int main()
         const Vec3 above = wreck.getPosition() + wreck.getUp() * 5.0;
         check(terrain.raycast(above, -wreck.getUp(), 100.0, hit) && hit.m_wreck == 0
             && dot(hit.m_point - wreck.getPosition(), wreck.getUp()) > 1.0, "a wreck is in the way");
-        check(std::fabs(heightAt(62.0, 8.0, 20.0) - terrain.getTrack().getBridgeHeight()) < 1.0e-6,
+        check(std::fabs(heightAt(62.0, -6.0, 20.0) - terrain.getTrack().getBridgeHeight()) < 1.0e-6,
             "bridge deck beside the crossing");
         check(heightAt(62.0, 0.0, 3.0) == 0.0, "road passes under the bridge");
         check(terrain.raycast(Vec3(40.0, 1.5, 30.0), Vec3(1.0, 0.0, 0.0), 40.0, hit) && hit.m_normal.x < -0.99, "embankment has walls");
@@ -381,8 +381,10 @@ int main()
         for (size_t i = 0; i < path.size(); ++i)
         {
             Hit hit;
+            // The first and last few steps lie on the main road itself, where the slip roads branch off
+            const bool junction = i < 12 || i + 12 >= path.size();
             unbroken = unbroken && terrain.raycast(path[i] + Vec3(0.0, 4.0, 0.0), down, 20.0, hit)
-                && std::fabs(hit.m_traction - onDirt) < 1.0e-9;
+                && (std::fabs(hit.m_traction - onDirt) < 1.0e-9 || (junction && hit.m_traction > onDirt));
             if (i > 0)
             {
                 longestStep = std::max(longestStep, length(path[i] - path[i - 1]));
@@ -407,6 +409,7 @@ int main()
             return nearest;
         };
         double closest = 1.0e9;
+        double drawnClosest = 1.0e9;
         for (const Face& face : terrain.getFaces())
         {
             if (face.m_surface == Face::Surface::DirtPale || face.m_surface == Face::Surface::DirtDark)
@@ -417,7 +420,9 @@ int main()
                 {
                     if (!dirt.contains(vertex))
                     {
-                        closest = std::min(closest, nearestRoad(vertex));
+                        // Tiles drawn under the tarmac at a junction close the seam but are not driven on
+                        drawnClosest = std::min(drawnClosest, nearestRoad(vertex));
+                        closest = std::min(closest, face.m_solid ? nearestRoad(vertex) : 1.0e9);
                     }
                 }
             }
@@ -425,8 +430,9 @@ int main()
         const PathPoint& gap = track.getGapCentre();
         std::cout << "    " << path.size() << " steps, nearest the dirt comes to the middle of the main road "
             << closest << " m (the road is " << track.getHalfWidth() << " m to its edge)" << std::endl;
-        check(closest > track.getHalfWidth(), "the dirt road never overlaps the main road");
-        check(closest < track.getHalfWidth() + 1.5, "but runs right up to its edge");
+        check(closest > track.getHalfWidth() - 3.0, "the dirt driven on stays off the main road");
+        check(drawnClosest < track.getHalfWidth() - 1.0, "and the slip roads reach in under its edge, leaving no seam");
+        check(closest < track.getHalfWidth() + 0.1, "and meets its edge with no grass between");
         check(dot(path.front() - gap.m_position, gap.m_forward) < -40.0
             && dot(path.back() - gap.m_position, gap.m_forward) > 40.0,
             "leaving it before the bridge and rejoining after");
@@ -439,6 +445,72 @@ int main()
             throughTheEnd = throughTheEnd || length(Vec3(point.x - mouth.x, 0.0, point.z - mouth.z)) < 1.5;
         }
         check(throughTheEnd, "it runs into the end of the cutting, down its entrance ramp");
+    }
+
+    std::cout << "Jumping the hole in the bridge" << std::endl;
+    {
+        const Track track;
+        const std::vector<PathPoint>& points = track.getPoints();
+        const size_t hole = (size_t) (&track.getGapCentre() - &points.front());
+        size_t beyond = hole;
+        while (points[beyond].m_kind == PathPoint::Kind::Gap)
+        {
+            ++beyond;
+        }
+        const size_t crest = (size_t) (&track.getBridgeCrest() - &points.front());
+        std::cout << "    lip at " << points[hole - 1].m_position.y << " m, deck beyond at "
+            << points[beyond].m_position.y << " m, " << length(points[beyond].m_position - points[hole - 1].m_position)
+            << " m apart" << std::endl;
+        check(hole < crest, "the hole comes before the middle of the bridge");
+        check(points[hole - 1].m_position.y > points[beyond].m_position.y + 0.5, "the take-off lip stands above the deck beyond");
+        check(length(points[beyond].m_position - points[hole - 1].m_position) > 7.0, "and the hole is wider than it was");
+
+        // Driven at it with more or less throttle: speed decides
+        const auto attempt = [&](double throttle)
+        {
+            Game game(0);
+            Pilot pilot;
+            game.startAt(hole - 45);
+            double lowest = 99.0;
+            double speed = 0.0;
+            for (double t = 0.0; t < 30.0 && game.getProgress() < beyond + 6 && game.getProgress() + 50 > hole; t += 1.0 / 60.0)
+            {
+                Controls controls = pilot.drive(game);
+                controls.m_throttle = std::min(controls.m_throttle, throttle);
+                game.setControls(controls);
+                game.step(1.0 / 60.0);
+                if (game.getProgress() + 1 >= hole)
+                {
+                    lowest = std::min(lowest, game.getTruck().getPosition().y);
+                    speed = speed == 0.0 ? game.getTruck().getSpeed() : speed;
+                }
+            }
+            std::cout << "    throttle " << throttle << ": " << speed * 3.6 << " km/h at the lip, lowest "
+                << lowest << " m" << std::endl;
+            return lowest;
+        };
+        check(attempt(1.0) > 5.0, "at full throttle the truck lands on the far deck");
+        check(attempt(0.25) < 3.0, "too slow, and it drops through the hole");
+    }
+
+    std::cout << "Round the bridge by the dirt road" << std::endl;
+    {
+        Game game(0);
+        const Terrain& terrain = game.getTerrain();
+        const Driver driver;
+        game.startAt(terrain.getSlipLeave() - 2);
+        double lowest = 9.0;
+        for (double t = 0.0; t < 40.0 && game.getProgress() < terrain.getSlipRejoin(); t += 1.0 / 60.0)
+        {
+            game.setControls(driver.follow(game.getTruck(), terrain.getDirtPath()));
+            game.step(1.0 / 60.0);
+            lowest = std::min(lowest, game.getTruck().getPosition().y);
+        }
+        std::cout << "    progress " << game.getProgress() << " (rejoins at " << terrain.getSlipRejoin()
+            << "), lowest " << lowest << " m, lap time so far " << game.getLapTime() << " s" << std::endl;
+        check(lowest < 0.0, "the dirt road leads down through the cutting");
+        check(game.getProgress() >= terrain.getSlipRejoin(), "and coming out the far end counts as having passed the bridge");
+        check(game.getTruck().up().y > 0.9 && !game.isWrecked(), "with the truck still on its wheels");
     }
 
     std::cout << "Tyre setups" << std::endl;
@@ -877,6 +949,9 @@ int main()
         double lowest = 9.0;
         double deepest = 0.0;
         double lowestOnTheBridge = 9.0;
+        const DirtRoad& cutting = race.getTerrain().getDirtRoad();
+        std::vector<int> byDirtRoad(racers.size(), 0);
+        std::vector<bool> inTheCutting(racers.size(), false);
         const std::vector<PathPoint>& where = race.getTerrain().getTrack().getPoints();
         bool lapsWereComplete = true;
         bool overWithThePlayer = true;
@@ -899,6 +974,10 @@ int main()
                 }
                 gates[i] = racers[i].getCheckpointsPassed();
                 lowest = std::min(lowest, racers[i].m_truck.getPosition().y);
+                const bool sunk = cutting.contains(racers[i].m_truck.getPosition())
+                    && racers[i].m_truck.getPosition().y < 0.6;
+                byDirtRoad[i] += sunk && !inTheCutting[i] ? 1 : 0;
+                inTheCutting[i] = sunk;
                 const PathPoint::Kind kind = where[racers[i].m_progress].m_kind;
                 if (kind == PathPoint::Kind::Bridge || kind == PathPoint::Kind::Gap)
                 {
@@ -934,9 +1013,14 @@ int main()
         check(sensibleTimes, "each in a sensible time");
         check(places == std::vector<int>({ 1, 2, 3, 4 }), "they finish first to fourth, no place shared");
         check(lapsWereComplete, "every credited lap passed every checkpoint");
-        check(lowest > 0.5, "nobody falls through the road");
+        check(lowest > -1.0, "nobody falls through the ground, the dirt road's cutting included");
         std::cout << "    lowest on the bridge " << lowestOnTheBridge << " m" << std::endl;
-        check(lowestOnTheBridge > 3.0, "every racer clears the hole in the bridge instead of dropping through");
+        check(lowestOnTheBridge > 3.0, "whoever takes the bridge clears the hole instead of dropping through");
+        const int opponentsByDirt = byDirtRoad[1] + byDirtRoad[2] + byDirtRoad[3];
+        std::cout << "    by the dirt road: opponents " << opponentsByDirt << " times out of 9, the player "
+            << byDirtRoad[0] << std::endl;
+        check(opponentsByDirt >= 5, "the opponents take the dirt road most of the time");
+        check(opponentsByDirt < 9, "but not always");
         check(deepest < 0.6, "trucks bump but do not drive through each other");
         check(overWithThePlayer && race.isRaceOver(), "the race is over when the player finishes");
         check(race.getPosition() == racers.front().m_finishPlace, "the player's position is the finishing place");

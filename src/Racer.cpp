@@ -36,6 +36,8 @@ Racer::Racer(const std::string& name, const Color& color, const Driver::Style& s
     , m_wreckedClock(0.0)
     , m_wrecked(false)
     , m_stuckClock(0.0)
+    , m_detour(false)
+    , m_routeLap(0)
     , m_lapClock(-1.0)
     , m_missedClock(-1.0)
     , m_loopDone(false)

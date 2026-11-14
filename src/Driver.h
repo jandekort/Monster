@@ -20,6 +20,7 @@ public:
         double m_braking = 4.5;       // deceleration assumed when planning for a bend [m/s^2]
         double m_planDistance = 80.0; // how far ahead bends and the loop are considered [m]
         double m_throttleCap = 1.0;   // most throttle used, except on the run into the loop
+        double m_detourPace = 1.3;    // speed kept on the dirt road, as a multiple of m_cornerSpeed
     };
 
     Driver();
@@ -27,6 +28,9 @@ public:
 
     // progress is the index of the last track point the truck reached
     Controls drive(const Truck& truck, size_t progress, const Track& track) const;
+
+    // Along a route that is not the circuit itself, such as the dirt road round the bridge
+    Controls follow(const Truck& truck, const std::vector<Vec3>& path) const;
 
     // Accessor
     const Style& getStyle() const { return m_style; }

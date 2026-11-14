@@ -41,7 +41,8 @@ public:
     double getLength() const { return m_points.back().m_distance; }
     double getBridgeHeight() const { return m_bridgeHeight; }
     double getBridgeGap() const { return m_bridgeGap; }
-    const PathPoint& getGapCentre() const; // the broken piece of the bridge
+    const PathPoint& getGapCentre() const;   // where the bridge deck breaks off
+    const PathPoint& getBridgeCrest() const; // the middle of the bridge, over the tunnel
 
     // Track points carrying a numbered checkpoint gate, in the order they are driven through.
     // The start and finish line is the point the lap begins and ends on, and is not one of them.
@@ -71,7 +72,10 @@ private:
     double m_bridgeRamp;  // length of each approach ramp [m]
     double m_bridgeDeck;  // half length of the level deck [m]
     double m_tunnelHalf;  // half width of the opening under the deck [m]
-    double m_bridgeGap;   // length of deck missing at the crest [m]
+    double m_bridgeGap;   // length of deck missing, from where the level deck would begin [m]
+    double m_kickRise;    // the take-off lip stands this far above the deck beyond the hole [m]
+    double m_kickRun;     // and is reached over this distance [m]
+    size_t m_crestIndex;
 
     // Checkpoints
     size_t m_checkpointCount;

@@ -19,7 +19,10 @@ Track::Track()
     , m_bridgeRamp(50.0)
     , m_bridgeDeck(12.0)
     , m_tunnelHalf(9.0)
-    , m_bridgeGap(5.0)
+    , m_bridgeGap(6.0)
+    , m_kickRise(1.2)
+    , m_kickRun(10.0)
+    , m_crestIndex(0)
     , m_checkpointCount(4)
     , m_gateMargin(0.8)
     , m_gateClearance(8.0)
@@ -118,6 +121,11 @@ const PathPoint& Track::getGapCentre() const
     return *found;
 }
 
+const PathPoint& Track::getBridgeCrest() const
+{
+    return m_points.at(m_crestIndex);
+}
+
 Vec3 Track::heading() const
 {
     return Vec3(std::cos(m_angle), 0.0, std::sin(m_angle));
@@ -174,10 +182,14 @@ void Track::addBridge(double length, double crest)
 {
     require(crest - m_bridgeDeck - m_bridgeRamp > 0.0 && crest + m_bridgeDeck + m_bridgeRamp < length,
         "Track::addBridge: ramps do not fit");
+    // The deck breaks off where the climb ends. The road kicks up to a lip just before the hole,
+    // so that a truck with speed is thrown across it and lands on the lower deck beyond.
+    const double holeStart = crest - m_bridgeDeck;
     const auto profile = [&](double s)
     {
         const double t = clamp((m_bridgeDeck + m_bridgeRamp - std::fabs(s - crest)) / m_bridgeRamp, 0.0, 1.0);
-        return 0.5 * m_bridgeHeight * (1.0 - std::cos(M_PI * t));
+        const double kick = s < holeStart ? m_kickRise * clamp((s - holeStart + m_kickRun) / m_kickRun, 0.0, 1.0) : 0.0;
+        return 0.5 * m_bridgeHeight * (1.0 - std::cos(M_PI * t)) + kick;
     };
 
     const int steps = std::max(1, (int) std::ceil(length / m_spacing));
@@ -187,16 +199,23 @@ void Track::addBridge(double length, double crest)
     {
         const double s = step * i;
         const double h = profile(s);
-        const double slope = (profile(s + 0.01) - profile(s - 0.01)) / 0.02;
+        const double slope = (profile(s) - profile(s - 0.02)) / 0.02;
         const Vec3 forward = normalize(heading() + Vec3(0.0, slope, 0.0));
         PathPoint::Kind kind = PathPoint::Kind::Flat;
         if (h > 0.0)
         {
-            kind = std::fabs(s - crest) < m_tunnelHalf ? PathPoint::Kind::Bridge : PathPoint::Kind::Embankment;
+            // Open underneath from the lip to the far side of the tunnel, so that a truck which
+            // drops through the hole lands on the ground and can drive out
+            const bool open = std::fabs(s - crest) < m_tunnelHalf || (s > holeStart - 3.0 && s < crest);
+            kind = open ? PathPoint::Kind::Bridge : PathPoint::Kind::Embankment;
         }
-        if (std::fabs(s - crest) < 0.5 * m_bridgeGap)
+        if (s > holeStart && s < holeStart + m_bridgeGap)
         {
             kind = PathPoint::Kind::Gap; // the deck is missing here
+        }
+        if (std::fabs(s - crest) <= 0.5 * step)
+        {
+            m_crestIndex = m_points.size();
         }
         m_cursor = start + heading() * s;
         addPoint(m_cursor + Vec3(0.0, h, 0.0), forward, rightward(), cross(rightward(), forward), kind, false, step);

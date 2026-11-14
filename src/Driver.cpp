@@ -24,6 +24,38 @@ Driver::Driver(const Style& style)
     require(style.m_throttleCap > 0.0 && style.m_throttleCap <= 1.0, "Driver: throttle cap must be in (0, 1]");
 }
 
+Controls Driver::follow(const Truck& truck, const std::vector<Vec3>& path) const
+{
+    require(!path.empty(), "Driver::follow: nothing to follow");
+    const Vec3& position = truck.getPosition();
+    const auto flatDistance = [&](const Vec3& point)
+    {
+        return std::hypot(point.x - position.x, point.z - position.z);
+    };
+
+    size_t nearest = 0;
+    for (size_t i = 1; i < path.size(); ++i)
+    {
+        if (flatDistance(path[i]) < flatDistance(path[nearest]))
+        {
+            nearest = i;
+        }
+    }
+    size_t target = nearest;
+    while (target + 1 < path.size() && flatDistance(path[target]) < m_style.m_lookAhead)
+    {
+        ++target;
+    }
+
+    Controls controls;
+    const Vec3 to = path[target] - position;
+    controls.m_steer = clamp(m_style.m_steerGain * std::atan2(dot(to, truck.right()), dot(to, truck.forward())), -1.0, 1.0);
+    const double limit = m_style.m_detourPace * m_style.m_cornerSpeed;
+    controls.m_throttle = truck.getSpeed() < limit ? 1.0 : 0.0;
+    controls.m_brake = truck.getSpeed() > limit + 1.0 ? 1.0 : 0.0;
+    return controls;
+}
+
 Controls Driver::drive(const Truck& truck, size_t progress, const Track& track) const
 {
     const std::vector<PathPoint>& points = track.getPoints();

@@ -137,6 +137,8 @@ public:
     double getCrush() const;
     const DirtRoad& getDirtRoad() const { return m_dirt; }
     const std::vector<Vec3>& getDirtPath() const { return m_dirtPath; } // centreline, road to road
+    size_t getSlipLeave() const { return m_slipLeave; }   // track point where the dirt road leaves
+    size_t getSlipRejoin() const { return m_slipRejoin; } // and the one where it comes back
     double groundFloor(const Vec3& point) const; // solid ground under a point, 0 off the dirt road // how far through the row of wrecks, 0->all intact, 1->all flat
 
 private:
@@ -153,7 +155,8 @@ private:
     void placeDirtRoad();
     void buildDirtRoad();
     void buildSlipRoads();
-    void buildSlipRoad(const Vec3& from, const Vec3& leaving, const Vec3& to, const Vec3& arriving, int shade);
+    void buildSlipRoad(const Vec3& from, const Vec3& leaving, const Vec3& to, const Vec3& arriving, int shade,
+        const PathPoint& junction);
     void placeWrecks();
     void buildRoad();
     void buildSlabs();
@@ -167,7 +170,11 @@ private:
     double m_dirtOffset;  // from the bridge to the dirt road, to its right [m]
     int m_dirtColumns;    // tiles across the floor of the dirt road
     double m_slipGap;     // left between a slip road and the edge of the main road [m]
+    double m_slipSplay;   // how sharply a slip road turns off the main road, as sideways per forward
+    double m_groundSlack; // by how much a surface lying in the ground plane wins over it [m]
     std::vector<Vec3> m_dirtPath;
+    size_t m_slipLeave;
+    size_t m_slipRejoin;
     std::vector<Slab> m_slabs;
     std::vector<Wreck> m_wrecks;
     size_t m_wreckCount;
