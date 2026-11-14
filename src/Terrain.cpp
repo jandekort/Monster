@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <numeric>
 
 // Struct Face
 Face::Face(const Vec3& a, const Vec3& b, const Vec3& c, const Vec3& d, Surface surface, bool solid)
@@ -35,14 +36,16 @@ Slab::Slab(double x0, double x1, double h0, double h1, double halfWidth)
 }
 
 // Class Wreck
-Wreck::Wreck(double x, double z)
+Wreck::Wreck(const PathPoint& at)
     :
-    m_x(x)
-    , m_z(z)
+    m_position(at.m_position)
+    , m_forward(at.m_forward)
+    , m_up(at.m_normal)
+    , m_cross(at.m_cross)
     , m_halfWidth(0.9)
     , m_halfLength(2.3)
-    , m_slopeRun(0.9)
-    , m_height(1.25)
+    , m_slopeRun(1.1)
+    , m_height(1.45)
     , m_minFraction(0.3)
     , m_loadThreshold(4000.0)
     , m_crushResistance(9000.0)
@@ -64,9 +67,9 @@ std::array<Face, 3> Wreck::faces() const
 {
     const double h = getCurrentHeight();
     const double foot = m_halfWidth + m_slopeRun;
-    const auto corner = [&](double dx, double y, double side)
+    const auto corner = [&](double along, double up, double side)
     {
-        return Vec3(m_x + dx, y, m_z + side * m_halfLength);
+        return m_position + m_forward * along + m_up * up + m_cross * (side * m_halfLength);
     };
     return { {
         Face(corner(-m_halfWidth, h, -1.0), corner(m_halfWidth, h, -1.0),
@@ -92,7 +95,10 @@ Terrain::Terrain()
     :
     m_track()
     , m_slabs()
-    , m_wreck(35.0, 0.0)
+    , m_wrecks()
+    , m_wreckCount(3)
+    , m_wreckLeadIn(10.0)
+    , m_wreckSpacing(6.5)
     , m_faces()
     , m_triangles()
     , m_cellSize(8.0)
@@ -110,9 +116,46 @@ Terrain::Terrain()
     m_slabs.push_back(Slab(115.0, 118.0, 0.0, 2.5, rampHalfWidth)); // front of the landing
     m_slabs.push_back(Slab(118.0, 140.0, 2.5, 0.0, rampHalfWidth)); // landing slope
 
+    placeWrecks();
     buildRoad();
     buildSlabs();
     buildGrid();
+}
+
+// A row of old cars to flatten, lying across the road on the run back from the last gate
+void Terrain::placeWrecks()
+{
+    const std::vector<PathPoint>& points = m_track.getPoints();
+    const double first = points[m_track.getCheckpoints().back()].m_distance + m_wreckLeadIn;
+
+    m_wrecks.reserve(m_wreckCount);
+    for (size_t i = 0; i < m_wreckCount; ++i)
+    {
+        const double target = first + m_wreckSpacing * i;
+        const auto found = std::min_element(points.begin(), points.end(),
+            [&](const PathPoint& a, const PathPoint& b)
+            {
+                return std::fabs(a.m_distance - target) < std::fabs(b.m_distance - target);
+            });
+        require(found->m_kind == PathPoint::Kind::Flat && !found->m_corner,
+            "Terrain::placeWrecks: a wreck does not lie on level, straight road");
+        m_wrecks.push_back(Wreck(*found));
+    }
+}
+
+void Terrain::reset()
+{
+    for (Wreck& wreck : m_wrecks)
+    {
+        wreck.reset();
+    }
+}
+
+double Terrain::getCrush() const
+{
+    const double total = std::accumulate(m_wrecks.begin(), m_wrecks.end(), 0.0,
+        [](double sum, const Wreck& wreck) { return sum + wreck.getCrush(); });
+    return total / m_wrecks.size();
 }
 
 void Terrain::buildRoad()
@@ -294,7 +337,7 @@ bool Terrain::intersect(const Triangle& triangle, const Vec3& origin, const Vec3
     hit.m_distance = t;
     hit.m_point = origin + direction * t;
     hit.m_normal = dot(triangle.m_normal, direction) < 0.0 ? triangle.m_normal : -triangle.m_normal;
-    hit.m_wreck = false;
+    hit.m_wreck = -1;
     return true;
 }
 
@@ -310,7 +353,7 @@ bool Terrain::raycast(const Vec3& origin, const Vec3& direction, double reach, H
             hit.m_distance = nearest;
             hit.m_point = origin + direction * nearest;
             hit.m_normal = Vec3(0.0, 1.0, 0.0);
-            hit.m_wreck = false;
+            hit.m_wreck = -1;
             found = true;
         }
     }
@@ -338,19 +381,21 @@ bool Terrain::raycast(const Vec3& origin, const Vec3& direction, double reach, H
         }
     }
 
-    { // Wreck: its shape changes, so its triangles are made on the spot
-        const double dx = origin.x - m_wreck.getX();
-        const double dz = origin.z - m_wreck.getZ();
-        const double range = m_wreck.getReach() + reach;
-        if (dx*dx + dz*dz < range*range)
+    { // Wrecks: their shape changes, so their triangles are made on the spot
+        for (size_t i = 0; i < m_wrecks.size(); ++i)
         {
-            for (const Face& face : m_wreck.faces())
+            const Wreck& wreck = m_wrecks[i];
+            if (length(origin - wreck.getPosition()) > wreck.getReach() + reach)
+            {
+                continue;
+            }
+            for (const Face& face : wreck.faces())
             {
                 if (intersect(makeTriangle(face.m_a, face.m_b, face.m_c), origin, direction, nearest, hit)
                     || intersect(makeTriangle(face.m_a, face.m_c, face.m_d), origin, direction, nearest, hit))
                 {
                     nearest = hit.m_distance;
-                    hit.m_wreck = true;
+                    hit.m_wreck = (int) i;
                     found = true;
                 }
             }

@@ -112,8 +112,8 @@ Scene::Scene()
     , m_tileSize(20.0)
     , m_tileRange(24)
     , m_wheelSides(12)
-    , m_gateHeight(6.4)
-    , m_gateBanner(4.6)
+    , m_gateHeight(8.0)
+    , m_gateBanner(6.2)
     , m_poleHalfWidth(0.22)
     , m_bannerHalfDepth(0.14)
     , m_digitHeight(1.3)
@@ -134,7 +134,10 @@ void Scene::build(const Game& game, const Vec3& eye)
     addFaces(game.getTerrain());
     addMarkings(game.getTerrain().getTrack());
     addCheckpoints(game.getTerrain().getTrack());
-    addWreck(game.getTerrain().getWreck());
+    for (const Wreck& wreck : game.getTerrain().getWrecks())
+    {
+        addWreck(wreck);
+    }
     plantTrees(game.getTerrain().getTrack());
     addScenery();
     for (const Racer& racer : game.getRacers())
@@ -249,7 +252,7 @@ void Scene::addMarkings(const Track& track)
 void Scene::addCheckpoints(const Track& track)
 {
     const Color checkpoint(0.10f, 0.22f, 0.48f);
-    const Color startFinish(0.58f, 0.11f, 0.13f);
+    const Color startFinish = checkpoint; // the line is a checkpoint like the rest
     const std::vector<PathPoint>& points = track.getPoints();
     const double halfWidth = track.getGateHalfWidth();
 
@@ -387,9 +390,9 @@ void Scene::plantTrees(const Track& track)
 
 void Scene::addWreck(const Wreck& wreck)
 {
-    const Vec3 x(1.0, 0.0, 0.0);
-    const Vec3 y(0.0, 1.0, 0.0);
-    const Vec3 z(0.0, 0.0, 1.0);
+    const Vec3& x = wreck.getForward();
+    const Vec3& y = wreck.getUp();
+    const Vec3& z = wreck.getCross();
     const double crush = wreck.getCrush();
     const double height = wreck.getCurrentHeight();
     const double spread = 1.0 + 0.12 * crush; // flattened metal spreads out
@@ -400,7 +403,7 @@ void Scene::addWreck(const Wreck& wreck)
     const double bodyHeight = 0.62 * height;
     const double halfWidth = (wreck.getHalfWidth() + 0.3 * wreck.getSlopeRun()) * spread;
     const double halfLength = wreck.getHalfLength() * spread;
-    const Vec3 base(wreck.getX(), 0.0, wreck.getZ());
+    const Vec3& base = wreck.getPosition();
 
     m_mesh.addBox(base + y * (0.5 * bodyHeight + 0.05), x, y, z,
         Vec3(halfWidth, 0.5 * bodyHeight, halfLength), paint);
@@ -410,7 +413,7 @@ void Scene::addWreck(const Wreck& wreck)
     {
         const double sx = (i & 1) != 0 ? 1.0 : -1.0;
         const double sz = (i & 2) != 0 ? 1.0 : -1.0;
-        m_mesh.addBox(base + Vec3(sx * halfWidth, 0.3, sz * 0.62 * halfLength), x, y, z,
+        m_mesh.addBox(base + x * (sx * halfWidth) + y * 0.3 + z * (sz * 0.62 * halfLength), x, y, z,
             Vec3(0.12, 0.3, 0.33), rubber);
     }
 }

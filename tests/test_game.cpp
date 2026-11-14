@@ -120,7 +120,10 @@ int main()
         check(heightAt(97.0, 6.0, 10.0) == 0.0, "jump ramp has a finite width");
         check(heightAt(110.0, 0.0, 10.0) == 0.0, "gap between the ramps");
         check(terrain.raycast(Vec3(97.0, 10.0, 0.0), down, 100.0, hit) && hit.m_normal.x < -0.2, "ramp normal leans back");
-        check(terrain.raycast(Vec3(35.0, 5.0, 0.0), down, 100.0, hit) && hit.m_wreck && hit.m_point.y > 1.0, "wreck is in the way");
+        const Wreck& wreck = terrain.getWrecks().front();
+        const Vec3 above = wreck.getPosition() + wreck.getUp() * 5.0;
+        check(terrain.raycast(above, -wreck.getUp(), 100.0, hit) && hit.m_wreck == 0
+            && dot(hit.m_point - wreck.getPosition(), wreck.getUp()) > 1.0, "a wreck is in the way");
         check(std::fabs(heightAt(62.0, 0.0, 20.0) - terrain.getTrack().getBridgeHeight()) < 1.0e-6, "bridge deck over the crossing");
         check(heightAt(62.0, 0.0, 3.0) == 0.0, "road passes under the bridge");
         check(terrain.raycast(Vec3(40.0, 1.5, 30.0), Vec3(1.0, 0.0, 0.0), 40.0, hit) && hit.m_normal.x < -0.99, "embankment has walls");
@@ -130,8 +133,8 @@ int main()
         bool thrown = false;
         try
         {
-            Wreck wreck(0.0, 0.0);
-            wreck.applyLoad(1.0, -1.0);
+            Wreck sample(terrain.getTrack().getStartFinish());
+            sample.applyLoad(1.0, -1.0);
         }
         catch (const std::logic_error&)
         {
@@ -168,8 +171,9 @@ int main()
     std::cout << "Reverse" << std::endl;
     {
         Game game(0);
+        const double from = game.getTruck().getPosition().x;
         run(game, 3.0, drive(0.0, 1.0, 0.0));
-        check(game.getTruck().getPosition().x < -3.0, "brake reverses from standstill");
+        check(game.getTruck().getPosition().x < from - 3.0, "brake reverses from standstill");
     }
 
     std::cout << "Jump" << std::endl;
@@ -187,11 +191,8 @@ int main()
         }
         const Truck& truck = game.getTruck();
         std::cout << "    x " << truck.getPosition().x << ", z " << truck.getPosition().z
-            << ", peak " << peak << ", crush " << game.getTerrain().getWreck().getCrush()
-            << ", up.y " << truck.up().y << std::endl;
+            << ", peak " << peak << ", up.y " << truck.up().y << std::endl;
         std::cout << "    hud " << game.hudString() << std::endl;
-        check(game.getTerrain().getWreck().getCrush() > 0.9, "wreck is crushed");
-        check(game.getCrushPoints() > 250, "crushing scores");
         check(flew, "truck leaves the ramp");
         check(peak > 4.5, "jump gains height");
         check(truck.getPosition().x > 140.0, "clears the gap");
@@ -202,7 +203,57 @@ int main()
         const int score = game.getScore();
         game.reset();
         check(game.getScore() == 0 && game.getBestScore() == score, "reset keeps the best score");
-        check(game.getTerrain().getWreck().getCrush() == 0.0, "reset restores the wreck");
+    }
+
+    std::cout << "The row of wrecks" << std::endl;
+    {
+        Game game(0);
+        const Terrain& terrain = game.getTerrain();
+        const std::vector<Wreck>& wrecks = terrain.getWrecks();
+        const Track& track = terrain.getTrack();
+        const double frame = 1.0 / 60.0;
+
+        bool afterTheLastGate = true;
+        bool acrossTheRoad = true;
+        bool inOrder = true;
+        for (size_t i = 0; i < wrecks.size(); ++i)
+        {
+            const PathPoint& gate = track.getPoints()[track.getCheckpoints().back()];
+            const Vec3 fromGate = wrecks[i].getPosition() - gate.m_position;
+            afterTheLastGate = afterTheLastGate && dot(fromGate, gate.m_forward) > 0.0;
+            acrossTheRoad = acrossTheRoad
+                && wrecks[i].getHalfLength() > wrecks[i].getHalfWidth()
+                && length(wrecks[i].getPosition() - track.getStartFinish().m_position) > 20.0;
+            if (i > 0)
+            {
+                const Vec3 step = wrecks[i].getPosition() - wrecks[i - 1].getPosition();
+                inOrder = inOrder && dot(step, wrecks[i].getForward()) > 4.0 && length(step) < 12.0;
+            }
+        }
+        check(wrecks.size() == 3, "there are three wrecks");
+        check(afterTheLastGate, "they lie past the last gate, on the run back to the line");
+        check(acrossTheRoad, "across the road and clear of the start line");
+        check(inOrder, "one behind the next, in a row along the road");
+        check(terrain.getCrush() == 0.0, "all of them start intact");
+
+        // Drive the row down from the last gate
+        game.startAt(track.getCheckpoints().back());
+        game.setControls(drive(1.0, 0.0, 0.0));
+        for (double t = 0.0; t < 14.0; t += frame)
+        {
+            game.step(frame);
+        }
+        const Truck& truck = game.getTruck();
+        std::cout << "    crush " << terrain.getCrush() << ", points " << game.getCrushPoints()
+            << ", up.y " << truck.up().y << ", height " << truck.getPosition().y << std::endl;
+        check(terrain.getCrush() > 0.9, "driving the row flattens all of them");
+        check(game.getCrushPoints() >= 498 && game.getCrushPoints() <= 502, "and scores once for the row");
+        check(truck.up().y > 0.8 && !game.isWrecked(), "the truck rides over them and stays upright");
+        check(dot(truck.getPosition() - wrecks.back().getPosition(), wrecks.back().getForward()) > 0.0,
+            "and comes out the far side");
+
+        game.reset();
+        check(terrain.getCrush() == 0.0, "reset restores the row");
     }
 
     std::cout << "Cornering" << std::endl;

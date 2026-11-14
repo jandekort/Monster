@@ -46,7 +46,7 @@ console.log("    hud " + fields.join(" | ") + ", " + count + " vertices");
 check(count > 1000 && count % 3 === 0, "scene has triangles");
 check(vertices.every(Number.isFinite), "vertices are finite");
 check(matrix.every(Number.isFinite), "view projection is finite");
-check(Number(fields[1]) >= 500, "crushing and jumping score points");
+check(Number(fields[1]) >= 300, "the jump scores points");
 check(fields.length === 17 && fields[4] === "1" && Number(fields[5]) > 10.0, "lap and lap time are reported");
 check(Number(fields[7]) >= 1 && fields[8] === "4", "a gate driven through is counted");
 check(sawAir, "truck gets airborne");
@@ -67,7 +67,7 @@ check(hud()[9] === String(5), "an out of range setup is clamped");
 
 game.monster_reset();
 check(hud()[9] === "5", "reset keeps the tyre setup");
-check(hud()[1] === "0" && Number(hud()[2]) >= 500, "reset keeps the best score");
+check(hud()[1] === "0" && Number(hud()[2]) >= 300, "reset keeps the best score");
 
 // The race: three opponents on the grid ahead of the player
 check(hud()[13] === "1" && hud()[14] === "1", "alone, the player is first of one");

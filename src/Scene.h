@@ -79,7 +79,8 @@ private:
     int m_tileRange;   // tiles drawn in each direction around the camera
     int m_wheelSides;
     double m_gateHeight;      // top of the poles above the road [m]
-    double m_gateBanner;      // underside of the banner: headroom for the truck [m]
+    double m_gateBanner;      // underside of the banner, which must clear the chase camera as
+                              // well as the truck, or it fills the screen on the way through [m]
     double m_poleHalfWidth;
     double m_bannerHalfDepth; // thickness of the banner along the road [m]
     double m_digitHeight;     // height of a checkpoint number on its banner [m]

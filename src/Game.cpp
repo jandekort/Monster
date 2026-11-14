@@ -52,9 +52,9 @@ Game::Game(size_t opponents)
     , m_gateDepth(5.0)
     , m_gateReach(40.0)
     , m_raceLaps(3)
-    , m_gridFront(5.0)
-    , m_gridRow(3.5)
-    , m_gridLane(2.4)
+    , m_gridFront(7.0)
+    , m_gridRow(5.5)
+    , m_gridLane(2.5)
     , m_stuckDelay(6.0)
     , m_raceClock(0.0)
     , m_finishers(0)
@@ -216,7 +216,7 @@ void Game::step(double elapsed)
             {
                 m_crushClock += m_fixedStep;
             }
-            else if (m_terrain.getWreck().getCrush() >= 1.0)
+            else if (m_terrain.getCrush() >= 1.0)
             {
                 m_crushClock = 0.0;
             }
@@ -260,11 +260,11 @@ void Game::stepRacer(Racer& racer)
     }
 
     const size_t progressBefore = racer.m_progress;
-    const double crushBefore = m_terrain.getWreck().getCrush();
+    const double crushBefore = m_terrain.getCrush();
     racer.m_truck.step(m_fixedStep, controls, m_terrain);
 
     { // Whoever flattens the wreck scores for it
-        const double crushAfter = m_terrain.getWreck().getCrush();
+        const double crushAfter = m_terrain.getCrush();
         racer.m_crushShare += crushAfter - crushBefore;
         racer.m_flattened = racer.m_flattened || (crushBefore < 1.0 && crushAfter >= 1.0);
     }

@@ -2,7 +2,7 @@
 
 A Stunts-style stunt driving game with a monster truck, written in C++ and
 compiled to WebAssembly. One truck on a figure-eight circuit of about 990 m
-with a crushable wreck, a tunnel, a jump, a loop and a bridge.
+with a row of crushable wrecks, a tunnel, a jump, a loop and a bridge.
 
 ## The race
 
@@ -14,14 +14,16 @@ the player finishes; R restarts it from the grid.
 The opponents drive by the same rules as the player: they clear the same gates
 to be credited a lap, they are set upright again after a crash, and one that
 stops making progress for six seconds is put back at its last gate. Trucks bump
-each other but do not drive through each other. The wreck's points go to whoever
-crushes it.
+each other but do not drive through each other. The wrecks' points go to whoever
+flattens them.
 
 ## The circuit
 
 The two straights of the eight cross at different levels. A lap runs: start
-line, wreck, tunnel under the bridge, jump, two right-hand bends, loop, another
-right-hand bend, over the bridge, three left-hand bends back to the start.
+line, tunnel under the bridge, jump, two right-hand bends, loop, another
+right-hand bend, over the bridge, two left-hand bends, the last gate, the row
+of wrecks, a last left-hand bend and the run back to the line. The starting grid
+stands on that last straight.
 
 The loop is a helix on a slightly turned cylinder, so the road enters and
 leaves it tangentially: keep the wheels straight and the throttle open and the
@@ -47,7 +49,8 @@ Touch devices get on-screen buttons.
 
 ## Scoring
 
-- Crushing the wreck: up to 300 points, plus 200 when it is completely flat.
+- Crushing the row of three wrecks: up to 300 points over the row, plus 200 when
+  the last of them is flattened.
 - Jumps of 0.5 s or longer: 100 points per second in the air plus 10 per metre,
   times 3 for a perfect landing (within 10 degrees of the ground), times 2 for a
   good one (within 20 degrees), times 1 for a rough one. Touching down on the
@@ -87,7 +90,7 @@ committed `monster.wasm` does not match the sources.
 |---|---|
 | `src/Math.h` | vector, quaternion and matrix types |
 | `src/Track.*` | centreline of the circuit: straights, bends, bridge profile, loop |
-| `src/Terrain.*` | collision world: ground plane, road surfaces, walls, jump ramps, wreck; ray casts |
+| `src/Terrain.*` | collision world: ground plane, road surfaces, walls, jump ramps, the row of wrecks; ray casts |
 | `src/Truck.*` | rigid body, ray-cast suspension, tyres, air control |
 | `src/Judge.*` | air time, flips and landing rating |
 | `src/Driver.*` | the computer driver: follows the centreline, brakes for bends, floors it for the loop; its `Style` sets the pace |

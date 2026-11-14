@@ -307,7 +307,7 @@ void Truck::wheelForces(double dt, const Controls& controls, Terrain& terrain, V
         double depth = 0.0;
         Vec3 normal;
         Vec3 contact;
-        bool onWreck = false;
+        int onWreck = -1;
         const double sweep = m_maxCompression + m_rayMargin;
         for (int k = 0; k < m_wheelSpokes; ++k)
         {
@@ -378,9 +378,9 @@ void Truck::wheelForces(double dt, const Controls& controls, Terrain& terrain, V
             const Vec3 total = normal*load + along*drive + across*side;
             force += total;
             torque += cross(arm, total);
-            if (onWreck)
+            if (onWreck >= 0)
             {
-                terrain.crush(load, dt);
+                terrain.crush((size_t) onWreck, load, dt);
             }
         }
 

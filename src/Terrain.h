@@ -39,7 +39,7 @@ struct Hit
     double m_distance = 0.0;
     Vec3 m_point;
     Vec3 m_normal;        // unit, facing the ray origin
-    bool m_wreck = false; // true->the ray hit the crushable wreck
+    int m_wreck = -1;     // index of the wreck the ray hit, negative->not a wreck
 };
 
 // Struct Slab: a jump ramp piece on the start straight, linear in x
@@ -58,7 +58,7 @@ struct Slab
 class Wreck
 {
 public:
-    Wreck(double x, double z);
+    explicit Wreck(const PathPoint& at);
 
     // Mutator
     void applyLoad(double load, double dt);
@@ -68,19 +68,23 @@ public:
     std::array<Face, 3> faces() const; // roof and the two sloping flanks
     double getCrush() const { return m_crush; } // 0->intact, 1->flat
     double getCurrentHeight() const;
-    double getReach() const; // radius around (x, z) outside which nothing can hit
-    double getX() const { return m_x; }
-    double getZ() const { return m_z; }
+    double getReach() const; // radius around the car outside which nothing can hit
+    const Vec3& getPosition() const { return m_position; } // on the road surface
+    const Vec3& getForward() const { return m_forward; }   // along the road
+    const Vec3& getUp() const { return m_up; }
+    const Vec3& getCross() const { return m_cross; }       // across the road
     double getHalfWidth() const { return m_halfWidth; }
     double getHalfLength() const { return m_halfLength; }
     double getSlopeRun() const { return m_slopeRun; }
 
 private:
-    double m_x;
-    double m_z;
-    double m_halfWidth;       // along the road (x)
-    double m_halfLength;      // across the road (z)
-    double m_slopeRun;        // run of the sloped flanks in x
+    Vec3 m_position;
+    Vec3 m_forward;
+    Vec3 m_up;
+    Vec3 m_cross;
+    double m_halfWidth;       // along the road
+    double m_halfLength;      // across the road
+    double m_slopeRun;        // run of the sloped flanks along the road
     double m_height;          // intact height
     double m_minFraction;     // remaining height fraction when flat
     double m_loadThreshold;   // loads below this do not deform [N]
@@ -98,14 +102,15 @@ public:
     bool raycast(const Vec3& origin, const Vec3& direction, double reach, Hit& hit) const;
 
     // Mutator
-    void crush(double load, double dt) { m_wreck.applyLoad(load, dt); }
-    void reset() { m_wreck.reset(); }
+    void crush(size_t index, double load, double dt) { m_wrecks.at(index).applyLoad(load, dt); }
+    void reset();
 
     // Accessor
     const Track& getTrack() const { return m_track; }
     const std::vector<Face>& getFaces() const { return m_faces; }
     const std::vector<Slab>& getSlabs() const { return m_slabs; }
-    const Wreck& getWreck() const { return m_wreck; }
+    const std::vector<Wreck>& getWrecks() const { return m_wrecks; }
+    double getCrush() const; // how far through the row of wrecks, 0->all intact, 1->all flat
 
 private:
     // Struct Triangle: precomputed for the ray test
@@ -117,6 +122,7 @@ private:
         Vec3 m_normal;
     };
 
+    void placeWrecks();
     void buildRoad();
     void buildSlabs();
     void buildGrid();
@@ -126,7 +132,10 @@ private:
 
     Track m_track;
     std::vector<Slab> m_slabs;
-    Wreck m_wreck;
+    std::vector<Wreck> m_wrecks;
+    size_t m_wreckCount;
+    double m_wreckLeadIn;  // distance past the last gate to the first wreck [m]
+    double m_wreckSpacing; // between one wreck and the next [m]
     std::vector<Face> m_faces;
     std::vector<Triangle> m_triangles;
 

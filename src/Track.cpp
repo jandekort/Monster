@@ -22,13 +22,13 @@ Track::Track()
     , m_checkpointCount(4)
     , m_gateMargin(0.8)
     , m_gateClearance(8.0)
-    , m_cursor(6.0, 0.0, 0.0)
+    , m_cursor(20.0, 0.0, 0.0)
     , m_angle(0.0)
 {
     // The two straights cross at (crossing, 0): the start straight runs along +x on the
     // ground, the bridge straight runs along -z over it. Each lobe of the eight is a
     // rectangle with three rounded corners.
-    const double crossing = 62.0;   // x of the crossing; the start line is at x = 6, with the
+    const double crossing = 62.0;   // x of the crossing; the start line is at x = 20, with the
                                     // starting grid on the straight behind it
     const double corner = 25.0;     // radius of every bend
     const double quarter = 0.5 * M_PI;
