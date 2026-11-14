@@ -309,11 +309,11 @@ void Scene::addTruck(const Truck& truck)
     const Color steel(0.22f, 0.22f, 0.25f);
 
     { // Body
-        m_mesh.addBox(truck.toWorld(Vec3( 0.0, 0.25, 0.0)), f, u, r, Vec3(2.3, 0.35, 1.0), paint);
-        m_mesh.addBox(truck.toWorld(Vec3( 0.2, 0.88, 0.0)), f, u, r, Vec3(0.9, 0.28, 0.9), glass);
-        m_mesh.addBox(truck.toWorld(Vec3( 0.2, 1.23, 0.0)), f, u, r, Vec3(0.95, 0.07, 0.95), paint);
-        m_mesh.addBox(truck.toWorld(Vec3( 2.32, 0.25, 0.0)), f, u, r, Vec3(0.03, 0.12, 0.8), trim);
-        m_mesh.addBox(truck.toWorld(Vec3(-1.5, 0.66, 0.0)), f, u, r, Vec3(0.75, 0.06, 0.95), steel);
+        m_mesh.addBox(truck.toWorld(Vec3( 0.0, 0.25, 0.0)), f, u, r, Vec3(2.3, 0.35, 1.2), paint);
+        m_mesh.addBox(truck.toWorld(Vec3( 0.2, 0.88, 0.0)), f, u, r, Vec3(0.9, 0.28, 1.0), glass);
+        m_mesh.addBox(truck.toWorld(Vec3( 0.2, 1.23, 0.0)), f, u, r, Vec3(0.95, 0.07, 1.05), paint);
+        m_mesh.addBox(truck.toWorld(Vec3( 2.32, 0.25, 0.0)), f, u, r, Vec3(0.03, 0.12, 1.0), trim);
+        m_mesh.addBox(truck.toWorld(Vec3(-1.5, 0.66, 0.0)), f, u, r, Vec3(0.75, 0.06, 1.15), steel);
     }
 
     { // Axles and wheels

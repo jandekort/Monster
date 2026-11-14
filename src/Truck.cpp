@@ -52,8 +52,8 @@ Truck::Truck()
     , m_spokeSpread(60.0 * M_PI / 180.0)
     , m_maxCompression(0.9)
     , m_rayMargin(0.5)
-    , m_grip(0.72)
-    , m_slipSaturation(1.5)
+    , m_grip(1.10)
+    , m_slipSaturation(0.9)  // lateral slip speed at which the tyre reaches full grip
     , m_driveForce(8000.0)
     , m_brakeForce(9000.0)
     , m_topSpeed(40.0)
@@ -71,7 +71,7 @@ Truck::Truck()
     { // Wheels
         const double axleX = 1.75;
         const double axleY = 0.0;
-        const double trackZ = 1.55;
+        const double trackZ = 1.80;
         m_wheels.reserve(4);
         m_wheels.push_back(Wheel(Vec3( axleX, axleY, -trackZ), true));
         m_wheels.push_back(Wheel(Vec3( axleX, axleY,  trackZ), true));
@@ -81,20 +81,20 @@ Truck::Truck()
 
     { // Collision points: chassis corners, belly and roof
         m_bodyPoints.reserve(14);
-        m_bodyPoints.push_back(Vec3( 2.3, -0.1, -1.0));
-        m_bodyPoints.push_back(Vec3( 2.3, -0.1,  1.0));
-        m_bodyPoints.push_back(Vec3(-2.3, -0.1, -1.0));
-        m_bodyPoints.push_back(Vec3(-2.3, -0.1,  1.0));
-        m_bodyPoints.push_back(Vec3( 2.3,  0.6, -1.0));
-        m_bodyPoints.push_back(Vec3( 2.3,  0.6,  1.0));
-        m_bodyPoints.push_back(Vec3(-2.3,  0.6, -1.0));
-        m_bodyPoints.push_back(Vec3(-2.3,  0.6,  1.0));
-        m_bodyPoints.push_back(Vec3( 0.0, -0.1, -1.0));
-        m_bodyPoints.push_back(Vec3( 0.0, -0.1,  1.0));
-        m_bodyPoints.push_back(Vec3( 1.1,  1.3, -0.9));
-        m_bodyPoints.push_back(Vec3( 1.1,  1.3,  0.9));
-        m_bodyPoints.push_back(Vec3(-0.7,  1.3, -0.9));
-        m_bodyPoints.push_back(Vec3(-0.7,  1.3,  0.9));
+        m_bodyPoints.push_back(Vec3( 2.3, -0.1, -1.2));
+        m_bodyPoints.push_back(Vec3( 2.3, -0.1,  1.2));
+        m_bodyPoints.push_back(Vec3(-2.3, -0.1, -1.2));
+        m_bodyPoints.push_back(Vec3(-2.3, -0.1,  1.2));
+        m_bodyPoints.push_back(Vec3( 2.3,  0.6, -1.2));
+        m_bodyPoints.push_back(Vec3( 2.3,  0.6,  1.2));
+        m_bodyPoints.push_back(Vec3(-2.3,  0.6, -1.2));
+        m_bodyPoints.push_back(Vec3(-2.3,  0.6,  1.2));
+        m_bodyPoints.push_back(Vec3( 0.0, -0.1, -1.2));
+        m_bodyPoints.push_back(Vec3( 0.0, -0.1,  1.2));
+        m_bodyPoints.push_back(Vec3( 1.1,  1.3, -1.0));
+        m_bodyPoints.push_back(Vec3( 1.1,  1.3,  1.0));
+        m_bodyPoints.push_back(Vec3(-0.7,  1.3, -1.0));
+        m_bodyPoints.push_back(Vec3(-0.7,  1.3,  1.0));
     }
 }
 
@@ -105,10 +105,17 @@ double Truck::getRideHeight() const
 
 void Truck::reset(const Vec3& position)
 {
+    placeAt(position, Vec3(1.0, 0.0, 0.0), Vec3(0.0, 1.0, 0.0));
+}
+
+void Truck::placeAt(const Vec3& position, const Vec3& forward, const Vec3& normal)
+{
+    const Vec3 u = normalize(normal, Vec3(0.0, 1.0, 0.0));
+    const Vec3 f = normalize(forward - u * dot(forward, u), Vec3(1.0, 0.0, 0.0));
     m_position = position;
     m_velocity = Vec3();
     m_angularVelocity = Vec3();
-    m_orientation = Quat();
+    m_orientation = Quat::fromAxes(f, u, cross(f, u));
     m_steerAngle = 0.0;
     m_wheelsOnGround = 0;
     m_bodyContact = false;
@@ -268,22 +275,37 @@ void Truck::bodyForces(const Terrain& terrain, Vec3& force, Vec3& torque)
     m_bodyContact = false;
     for (const Vec3& local : m_bodyPoints)
     {
-        // A surface between the centre of mass and a body point means the point is through it
         const Vec3 arm = m_orientation.rotate(local);
-        const double reach = length(arm);
-        const Vec3 ray = arm * (1.0 / reach);
-        Hit hit;
-        if (terrain.raycast(m_position, ray, reach, hit))
+
+        // The ground is a solid half-space, not a surface seen from above: a point below it is
+        // pushed out even when the centre of mass itself has ended up under the surface
+        Vec3 normal(0.0, 1.0, 0.0);
+        double depth = std::max(0.0, -(m_position.y + arm.y));
+
+        { // Road surfaces: one between the centre of mass and the point means the point is through it
+            const double reach = length(arm);
+            const Vec3 ray = arm * (1.0 / reach);
+            Hit hit;
+            if (terrain.raycast(m_position, ray, reach, hit))
+            {
+                const double through = (reach - hit.m_distance) * -dot(ray, hit.m_normal);
+                if (through > depth)
+                {
+                    depth = through;
+                    normal = hit.m_normal;
+                }
+            }
+        }
+
+        if (depth > 0.0)
         {
             m_bodyContact = true;
-            const Vec3& n = hit.m_normal;
-            const double depth = (reach - hit.m_distance) * -dot(ray, n);
             const Vec3 velocity = m_velocity + cross(m_angularVelocity, arm);
-            const double approach = dot(velocity, n);
+            const double approach = dot(velocity, normal);
             const double load = clamp(m_bodyStiffness*depth - m_bodyDamping*approach, 0.0, m_maxWheelLoad);
-            const Vec3 sliding = velocity - n * approach;
+            const Vec3 sliding = velocity - normal * approach;
             const Vec3 friction = sliding * (-m_bodyFriction * load / (length(sliding) + 0.5));
-            const Vec3 total = n * load + friction;
+            const Vec3 total = normal * load + friction;
             force += total;
             torque += cross(arm, total);
         }

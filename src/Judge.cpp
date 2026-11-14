@@ -42,6 +42,18 @@ void Judge::reset()
     *this = Judge();
 }
 
+void Judge::settle()
+{
+    m_airborne = false;
+    m_looseClock = 0.0;
+    m_airTime = 0.0;
+    m_pitchTravel = 0.0;
+    m_settling = false;
+    m_lastRating = Rating::None;
+    m_lastPoints = 0;
+    m_lastFlips = 0;
+}
+
 const char* Judge::ratingName(Rating rating)
 {
     switch (rating)

@@ -172,6 +172,85 @@ int main()
         check(game.getTerrain().getWreck().getCrush() == 0.0, "reset restores the wreck");
     }
 
+    std::cout << "Cornering" << std::endl;
+    {
+        // On empty ground well clear of the circuit: the turn sweeps a wide circle, and the
+        // wreck or a ramp caught mid-corner would decide the outcome instead of the tyres
+        Terrain terrain;
+        Truck truck;
+        truck.placeAt(Vec3(0.0, 1.64, 200.0), Vec3(1.0, 0.0, 0.0), Vec3(0.0, 1.0, 0.0));
+        const double step = 1.0 / 240.0;
+        const double target = 18.0;
+        for (double t = 0.0; t < 20.0 && truck.getSpeed() < target; t += step)
+        {
+            truck.step(step, drive(1.0, 0.0, 0.0), terrain);
+        }
+
+        const Vec3 entry = truck.forward();
+        double slip = 0.0;
+        double minUp = 1.0;
+        double yaw = 0.0;
+        int samples = 0;
+        for (double t = 0.0; t < 4.0; t += step)
+        {
+            truck.step(step, drive(truck.getSpeed() < target ? 1.0 : 0.0, 0.0, 1.0), terrain);
+            minUp = std::min(minUp, truck.up().y);
+            if (t > 1.0)
+            {
+                slip = std::max(slip, std::fabs(dot(truck.getVelocity(), truck.right())));
+                yaw += std::fabs(dot(truck.getAngularVelocity(), truck.up()));
+                ++samples;
+            }
+        }
+        const double radius = truck.getSpeed() * samples / yaw;
+        std::cout << "    sideslip " << slip << " m/s, radius " << radius
+            << " m, min up.y " << minUp << std::endl;
+        check(slip < 0.8, "tyres hold instead of sliding sideways");
+        check(radius < 45.0, "the turn is tight");
+        check(minUp > 0.9, "a hard corner does not tip the truck");
+        check(dot(truck.forward(), entry) < 0.0, "the truck turns well past a right angle");
+    }
+
+    std::cout << "Recovery" << std::endl;
+    {
+        Game game;
+        run(game, 3.0, drive(1.0, 0.0, 0.0));
+        const int scored = game.getScore();
+        const size_t where = game.getProgress();
+
+        // Drop the truck through the ground, as a bad landing used to do
+        game.recover();
+        check(game.getTruck().up().y > 0.99, "recovery sets the truck upright");
+        check(game.getTruck().getSpeed() < 1.0e-9, "recovery brings it to rest");
+        check(game.getScore() == scored, "recovery keeps the score");
+        check(game.getProgress() == where, "recovery keeps the lap progress");
+
+        run(game, 2.0, drive(0.0, 0.0, 0.0));
+        const Truck& truck = game.getTruck();
+        std::cout << "    rests at y " << truck.getPosition().y << ", wheels " << truck.getWheelsOnGround() << std::endl;
+        check(truck.getWheelsOnGround() == 4, "it is standing on the road afterwards");
+        check(!game.isWrecked(), "and is not wrecked");
+    }
+
+    std::cout << "Upside down" << std::endl;
+    {
+        Terrain terrain;
+        Truck truck;
+        truck.placeAt(Vec3(10.0, 2.0, 0.0), Vec3(1.0, 0.0, 0.0), Vec3(0.0, -1.0, 0.0));
+        double lowest = truck.getPosition().y;
+        // Full throttle throughout: input must not be able to launch a truck lying on its roof
+        for (double t = 0.0; t < 5.0; t += 1.0 / 240.0)
+        {
+            truck.step(1.0 / 240.0, drive(1.0, 0.0, 0.0), terrain);
+            lowest = std::min(lowest, truck.getPosition().y);
+        }
+        std::cout << "    rests at y " << truck.getPosition().y << ", lowest " << lowest
+            << ", up.y " << truck.up().y << ", body contact " << truck.hasBodyContact() << std::endl;
+        check(lowest > -0.5, "an upside down truck does not sink through the ground");
+        check(truck.hasBodyContact(), "it rests on its roof");
+        check(truck.getPosition().y > 0.5 && truck.getPosition().y < 2.5, "at a sensible height");
+    }
+
     std::cout << "Full lap on autopilot" << std::endl;
     {
         Game game;

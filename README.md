@@ -23,7 +23,12 @@ bridge are driven.
 | Up / W | throttle | lifts the nose |
 | Down / S | brake, then reverse | drops the nose |
 | Left, Right / A, D | steer | |
+| Space | set the truck back on the road, upright, keeping the score | |
 | R | restart the run | |
+
+A truck left on its roof or side is set back on the road on its own after a few
+seconds, so Space only saves waiting. While it is wrecked the controls are
+ignored, so holding a key cannot flip it over and launch it.
 
 Touch devices get on-screen buttons.
 
@@ -40,7 +45,7 @@ Touch devices get on-screen buttons.
 ## Build
 
     make test                          # native unit tests, any C++17 compiler
-    make wasm WASI_SDK=/path/to/sdk    # web/monster.wasm
+    make wasm WASI_SDK=/path/to/sdk    # docs/monster.wasm
     make serve                         # http://localhost:8000
     node tests/smoke.mjs               # drives the wasm build through the course
 
@@ -50,10 +55,18 @@ is `/opt/wasi-sdk`.
 
 ## Hosting on GitHub Pages
 
+The site is the `docs` folder, served straight from the branch.
+
 1. Create a repository and push this folder to its `main` branch.
-2. In the repository settings, under Pages, set the source to "GitHub Actions".
-3. The workflow in `.github/workflows/pages.yml` runs the tests, builds
-   `monster.wasm` and publishes the `web` folder on every push to `main`.
+2. In the repository settings, under Pages, set the source to "Deploy from a
+   branch", branch `main`, folder `/docs`.
+3. The site appears at `https://<user>.github.io/<repository>/`.
+
+`docs/monster.wasm` is committed, because Pages publishes only what is in the
+repository. After changing anything under `src`, run `make wasm` and commit the
+rebuilt file along with the sources. The workflow in
+`.github/workflows/ci.yml` runs the tests on every push and fails if the
+committed `monster.wasm` does not match the sources.
 
 ## Layout
 
@@ -67,7 +80,7 @@ is `/opt/wasi-sdk`.
 | `src/Game.*` | fixed time step loop, score, laps, HUD text |
 | `src/Mesh.*`, `src/Scene.*` | flat shaded triangle list and chase camera |
 | `src/wasm_api.cpp` | C functions exported to JavaScript |
-| `web/` | page, WebGL drawing, input |
+| `docs/` | the published site: page, WebGL drawing, input, built `monster.wasm` |
 | `tests/` | native tests (with an autopilot that drives a full lap) and the wasm smoke test |
 
 The game core (`Track`, `Terrain`, `Truck`, `Judge`, `Game`) has no platform

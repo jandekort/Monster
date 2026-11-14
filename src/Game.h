@@ -17,6 +17,7 @@ public:
 
     // Mutator
     void reset();
+    void recover(); // set the truck upright on the track where it last was
     void step(double elapsed); // advances the simulation in fixed steps
     void setControls(const Controls& controls) { m_controls = controls; }
 
@@ -28,6 +29,7 @@ public:
     int getBestScore() const { return m_best; }
     int getCrushPoints() const;
     bool isWrecked() const { return m_wrecked; }
+    bool needsRecovery() const { return m_wrecked || m_truck.getPosition().y < m_floor; }
     size_t getProgress() const { return m_progress; } // index of the last track point reached
     int getLap() const { return m_lap; }              // 1->first lap
     double getLapTime() const { return m_lapTime; }
@@ -46,7 +48,10 @@ private:
     double m_fixedStep;
     double m_maxElapsed;      // longest frame time that is simulated [s]
     double m_accumulator;
-    double m_wreckedDelay;    // time on its side or roof before the run ends [s]
+    double m_wreckedDelay;    // time on its side or roof before the truck counts as wrecked [s]
+    double m_recoverDelay;    // further time before it is set upright on its own [s]
+    double m_floor;           // below this height the truck is lost and is recovered [m]
+    double m_uprightNormal;   // lowest surface normal y that can be recovered onto
     double m_messageDuration; // how long verdicts stay on screen [s]
     int m_crushPoints;        // points for a completely flattened wreck
     int m_crushBonus;
@@ -55,6 +60,7 @@ private:
     size_t m_gateWindow;      // track points searched ahead of the last one reached
 
     double m_tippedClock;
+    double m_wreckedClock;    // seconds since the truck was wrecked
     bool m_wrecked;           // true->truck is stuck on its side or roof
     double m_crushClock;      // seconds since the wreck was flattened, negative->not yet
     int m_best;

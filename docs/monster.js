@@ -40,6 +40,7 @@
         ArrowRight: "right", KeyD: "right"
     };
     let resetRequested = false;
+    let recoverRequested = false;
 
     window.addEventListener("keydown", function (event) {
         if (keyMap[event.code]) {
@@ -47,6 +48,9 @@
             event.preventDefault();
         } else if (event.code === "KeyR") {
             resetRequested = true;
+        } else if (event.code === "Space" || event.code === "Enter") {
+            recoverRequested = true;
+            event.preventDefault();
         }
     });
     window.addEventListener("keyup", function (event) {
@@ -65,6 +69,8 @@
                 event.preventDefault();
                 if (name === "reset") {
                     resetRequested = resetRequested || down;
+                } else if (name === "recover") {
+                    recoverRequested = recoverRequested || down;
                 } else {
                     keys[name] = down;
                 }
@@ -154,6 +160,10 @@
             if (resetRequested) {
                 resetRequested = false;
                 game.monster_reset();
+            }
+            if (recoverRequested) {
+                recoverRequested = false;
+                game.monster_recover();
             }
             game.monster_set_controls(keys.gas ? 1.0 : 0.0, keys.brake ? 1.0 : 0.0,
                 (keys.right ? 1.0 : 0.0) - (keys.left ? 1.0 : 0.0));

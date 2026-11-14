@@ -97,6 +97,29 @@ struct Quat
         return v + t * w + cross(qv, t);
     }
 
+    // Body axes given in world coordinates; they must be orthonormal with cross(x, y) = z
+    static Quat fromAxes(const Vec3& x, const Vec3& y, const Vec3& z)
+    {
+        const double trace = x.x + y.y + z.z;
+        if (trace > 0.0)
+        {
+            const double s = 2.0 * std::sqrt(trace + 1.0);
+            return Quat(0.25 * s, (y.z - z.y) / s, (z.x - x.z) / s, (x.y - y.x) / s).normalized();
+        }
+        if (x.x > y.y && x.x > z.z)
+        {
+            const double s = 2.0 * std::sqrt(1.0 + x.x - y.y - z.z);
+            return Quat((y.z - z.y) / s, 0.25 * s, (y.x + x.y) / s, (z.x + x.z) / s).normalized();
+        }
+        if (y.y > z.z)
+        {
+            const double s = 2.0 * std::sqrt(1.0 + y.y - x.x - z.z);
+            return Quat((z.x - x.z) / s, (y.x + x.y) / s, 0.25 * s, (z.y + y.z) / s).normalized();
+        }
+        const double s = 2.0 * std::sqrt(1.0 + z.z - x.x - y.y);
+        return Quat((x.y - y.x) / s, (z.x + x.z) / s, (z.y + y.z) / s, 0.25 * s).normalized();
+    }
+
     static Quat fromAxisAngle(const Vec3& axis, double angle)
     {
         const Vec3 a = normalize(axis);

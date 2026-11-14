@@ -41,6 +41,7 @@ public:
 
     // Mutator
     void reset(const Vec3& position);
+    void placeAt(const Vec3& position, const Vec3& forward, const Vec3& normal); // upright and at rest
     void step(double dt, const Controls& controls, Terrain& terrain);
 
     // Accessor

@@ -17,6 +17,9 @@ Game::Game()
     , m_maxElapsed(0.1)
     , m_accumulator(0.0)
     , m_wreckedDelay(2.0)
+    , m_recoverDelay(1.5)
+    , m_floor(-5.0)
+    , m_uprightNormal(0.5)
     , m_messageDuration(3.0)
     , m_crushPoints(300)
     , m_crushBonus(200)
@@ -24,6 +27,7 @@ Game::Game()
     , m_gateRadius(12.0)
     , m_gateWindow(10)
     , m_tippedClock(0.0)
+    , m_wreckedClock(0.0)
     , m_wrecked(false)
     , m_crushClock(-1.0)
     , m_best(0)
@@ -48,6 +52,7 @@ void Game::reset()
     m_truck.reset(Vec3(0.0, m_truck.getRideHeight(), 0.0));
     m_accumulator = 0.0;
     m_tippedClock = 0.0;
+    m_wreckedClock = 0.0;
     m_wrecked = false;
     m_crushClock = -1.0;
     m_lap = 1;
@@ -67,6 +72,27 @@ void Game::reset()
     }
 }
 
+// Put the truck back on the road, upright and at rest, where it last was. The loop is skipped:
+// recovering onto its ceiling would only drop the truck again.
+void Game::recover()
+{
+    const std::vector<PathPoint>& points = m_terrain.getTrack().getPoints();
+    size_t index = m_progress;
+    while (index > 0 && points[index].m_normal.y < m_uprightNormal)
+    {
+        --index;
+    }
+
+    const PathPoint& point = points[index];
+    m_progress = index;
+    m_truck.placeAt(point.m_position + point.m_normal * m_truck.getRideHeight(),
+        point.m_forward, point.m_normal);
+    m_judge.settle();
+    m_tippedClock = 0.0;
+    m_wreckedClock = 0.0;
+    m_wrecked = false;
+}
+
 void Game::step(double elapsed)
 {
     m_accumulator += clamp(elapsed, 0.0, m_maxElapsed);
@@ -74,7 +100,9 @@ void Game::step(double elapsed)
     {
         m_accumulator -= m_fixedStep;
 
-        m_truck.step(m_fixedStep, m_controls, m_terrain);
+        // A wrecked truck ignores the controls, so that pressing a key cannot flip it back
+        // onto its wheels and launch it
+        m_truck.step(m_fixedStep, m_wrecked ? Controls() : m_controls, m_terrain);
         m_judge.update(m_truck, m_fixedStep);
         updateProgress();
         updateStunts();
@@ -83,6 +111,12 @@ void Game::step(double elapsed)
             const bool tipped = m_truck.up().y < 0.3 && m_truck.getSpeed() < 2.0;
             m_tippedClock = tipped ? m_tippedClock + m_fixedStep : 0.0;
             m_wrecked = m_tippedClock > m_wreckedDelay;
+            m_wreckedClock = m_wrecked ? m_wreckedClock + m_fixedStep : 0.0;
+        }
+
+        if (m_wreckedClock > m_recoverDelay || m_truck.getPosition().y < m_floor)
+        {
+            recover();
         }
 
         { // Crush message
@@ -165,7 +199,7 @@ std::string Game::hudString() const
     char message[64] = "";
     if (m_wrecked)
     {
-        std::snprintf(message, sizeof(message), "WRECKED - PRESS R");
+        std::snprintf(message, sizeof(message), "WRECKED - SPACE TO RECOVER");
     }
     else if (m_judge.isAirborne())
     {

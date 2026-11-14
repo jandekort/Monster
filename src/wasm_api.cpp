@@ -42,6 +42,12 @@ MONSTER_EXPORT(monster_reset) void monster_reset()
     app().m_camera.snap();
 }
 
+// Sets the truck upright on the road where it last was, keeping the score
+MONSTER_EXPORT(monster_recover) void monster_recover()
+{
+    app().m_game.recover();
+}
+
 // steer: -1->left, +1->right
 MONSTER_EXPORT(monster_set_controls) void monster_set_controls(float throttle, float brake, float steer)
 {

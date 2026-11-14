@@ -24,6 +24,7 @@ public:
 
     // Mutator
     void reset();
+    void settle(); // forget the current flight, keep the score
     void update(const Truck& truck, double dt);
 
     // Accessor

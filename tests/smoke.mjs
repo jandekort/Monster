@@ -2,7 +2,7 @@
 // Usage: node tests/smoke.mjs [path to monster.wasm]
 import { readFileSync } from "node:fs";
 
-const path = process.argv[2] || "web/monster.wasm";
+const path = process.argv[2] || "docs/monster.wasm";
 const wasi = { fd_close: () => 0, fd_seek: () => 0, fd_write: () => 0 };
 const { instance } = await WebAssembly.instantiate(readFileSync(path), { wasi_snapshot_preview1: wasi });
 const game = instance.exports;
@@ -47,6 +47,11 @@ check(Number(fields[1]) >= 500, "crushing and jumping score points");
 check(fields.length === 7 && fields[4] === "1" && Number(fields[5]) > 10.0, "lap and lap time are reported");
 check(sawAir, "truck gets airborne");
 check(sawLanding, "landing is rated");
+
+const beforeRecovery = Number(fields[1]);
+game.monster_recover();
+game.monster_step(1.0 / 60.0);
+check(Number(hud()[1]) === beforeRecovery, "recovery keeps the score");
 
 game.monster_reset();
 check(hud()[1] === "0" && Number(hud()[2]) >= 500, "reset keeps the best score");
