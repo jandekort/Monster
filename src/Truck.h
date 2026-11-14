@@ -57,6 +57,9 @@ public:
 
     // Mutator
     void setSetup(const Setup& setup); // grip is clamped to what the truck can hold
+
+    // Bumps two trucks apart where their hulls overlap. The pushes act in the next step().
+    static void collide(Truck& a, Truck& b);
     void reset(const Vec3& position);
     void placeAt(const Vec3& position, const Vec3& forward, const Vec3& normal); // upright and at rest
     void step(double dt, const Controls& controls, Terrain& terrain);
@@ -69,6 +72,9 @@ public:
     const Setup& getSetup() const { return m_setup; }
     const std::vector<Wheel>& getWheels() const { return m_wheels; }
     const std::vector<Vec3>& getBodyPoints() const { return m_bodyPoints; }
+    const std::vector<Vec3>& getHull() const { return m_hull; } // sphere centres in body coordinates
+    double getHullRadius() const { return m_hullRadius; }
+    static double overlap(const Truck& a, const Truck& b);      // deepest hull overlap [m], 0->apart
     const Vec3& getContactNormal() const { return m_contactNormal; } // surface under the last wheel contact
     int getWheelsOnGround() const { return m_wheelsOnGround; }
     bool hasBodyContact() const { return m_bodyContact; }
@@ -88,6 +94,7 @@ private:
     void bodyForces(const Terrain& terrain, Vec3& force, Vec3& torque);
     void airControl(const Controls& controls, Vec3& torque) const;
     void integrate(double dt, const Vec3& force, const Vec3& torque);
+    void push(const Vec3& force, const Vec3& point);
 
     // State
     Vec3 m_position;
@@ -100,6 +107,9 @@ private:
     Vec3 m_contactNormal;
     std::vector<Wheel> m_wheels;
     std::vector<Vec3> m_bodyPoints; // collision points in body coordinates
+    std::vector<Vec3> m_hull;       // spheres standing in for the truck against other trucks
+    Vec3 m_pushForce;               // from other trucks, spent in the next step
+    Vec3 m_pushTorque;
 
     // Chassis
     double m_mass;
@@ -137,4 +147,10 @@ private:
     double m_bodyFriction;
     double m_airPitchRate;   // angular acceleration from throttle/brake in the air [rad/s^2]
     double m_airDamping;     // [1/s]
+
+    // Contact with other trucks
+    double m_hullRadius;
+    double m_hullStiffness;  // [N/m] per pair of overlapping spheres
+    double m_hullDamping;    // [N s/m]
+    double m_maxPush;        // [N] per pair of overlapping spheres
 };

@@ -55,6 +55,9 @@ Truck::Truck()
     , m_contactNormal(0.0, 1.0, 0.0)
     , m_wheels()
     , m_bodyPoints()
+    , m_hull()
+    , m_pushForce()
+    , m_pushTorque()
     , m_mass(4500.0)
     , m_inertia(6000.0, 12000.0, 11000.0)
     , m_gravity(9.81)
@@ -84,6 +87,10 @@ Truck::Truck()
     , m_bodyFriction(0.6)
     , m_airPitchRate(0.7)
     , m_airDamping(0.3)
+    , m_hullRadius(1.25)
+    , m_hullStiffness(600000.0)
+    , m_hullDamping(30000.0)
+    , m_maxPush(400000.0)
 {
     { // Wheels
         const double axleX = 1.75;
@@ -94,6 +101,16 @@ Truck::Truck()
         m_wheels.push_back(Wheel(Vec3( axleX, axleY,  trackZ), true));
         m_wheels.push_back(Wheel(Vec3(-axleX, axleY, -trackZ), false));
         m_wheels.push_back(Wheel(Vec3(-axleX, axleY,  trackZ), false));
+    }
+
+    { // Hull against other trucks: two rows of three spheres, out to the tyres
+        m_hull.reserve(6);
+        m_hull.push_back(Vec3( 1.6, 0.2, -1.0));
+        m_hull.push_back(Vec3( 1.6, 0.2,  1.0));
+        m_hull.push_back(Vec3( 0.0, 0.2, -1.0));
+        m_hull.push_back(Vec3( 0.0, 0.2,  1.0));
+        m_hull.push_back(Vec3(-1.6, 0.2, -1.0));
+        m_hull.push_back(Vec3(-1.6, 0.2,  1.0));
     }
 
     { // Collision points: chassis corners, belly and roof
@@ -171,6 +188,8 @@ void Truck::placeAt(const Vec3& position, const Vec3& forward, const Vec3& norma
     m_wheelsOnGround = 0;
     m_bodyContact = false;
     m_contactNormal = Vec3(0.0, 1.0, 0.0);
+    m_pushForce = Vec3();
+    m_pushTorque = Vec3();
     for (Wheel& wheel : m_wheels)
     {
         wheel.m_onGround = false;
@@ -186,14 +205,75 @@ void Truck::step(double dt, const Controls& controls, Terrain& terrain)
 {
     require(dt > 0.0, "Truck::step: dt must be positive");
 
-    Vec3 force(0.0, -m_mass * m_gravity, 0.0);
-    Vec3 torque;
+    Vec3 force = Vec3(0.0, -m_mass * m_gravity, 0.0) + m_pushForce;
+    Vec3 torque = m_pushTorque;
+    m_pushForce = Vec3();
+    m_pushTorque = Vec3();
 
     steer(dt, controls);
     wheelForces(dt, controls, terrain, force, torque);
     bodyForces(terrain, force, torque);
     airControl(controls, torque);
     integrate(dt, force, torque);
+}
+
+double Truck::overlap(const Truck& a, const Truck& b)
+{
+    double deepest = 0.0;
+    for (const Vec3& pa : a.m_hull)
+    {
+        for (const Vec3& pb : b.m_hull)
+        {
+            deepest = std::max(deepest,
+                a.m_hullRadius + b.m_hullRadius - length(b.toWorld(pb) - a.toWorld(pa)));
+        }
+    }
+    return deepest;
+}
+
+// Each pair of overlapping spheres pushes the two trucks apart with a spring along the line
+// between them and damping on their closing speed. The push is kept level, so a bump can shove a
+// truck aside or turn it, but can neither lift it off the road nor press it into it.
+void Truck::collide(Truck& a, Truck& b)
+{
+    const double reach = 2.0 * (a.m_hullRadius + b.m_hullRadius) + 4.0;
+    if (length(b.m_position - a.m_position) > reach)
+    {
+        return;
+    }
+
+    const Vec3 apart = b.m_position - a.m_position;
+    const Vec3 fallback = normalize(Vec3(apart.x, 0.0, apart.z), Vec3(1.0, 0.0, 0.0));
+    for (const Vec3& pa : a.m_hull)
+    {
+        const Vec3 ca = a.toWorld(pa);
+        for (const Vec3& pb : b.m_hull)
+        {
+            const Vec3 cb = b.toWorld(pb);
+            const Vec3 between = cb - ca;
+            const double depth = a.m_hullRadius + b.m_hullRadius - length(between);
+            if (depth <= 0.0)
+            {
+                continue;
+            }
+
+            const Vec3 normal = normalize(Vec3(between.x, 0.0, between.z), fallback); // from a to b
+            const Vec3 point = (ca + cb) * 0.5;
+            const Vec3 va = a.m_velocity + cross(a.m_angularVelocity, point - a.m_position);
+            const Vec3 vb = b.m_velocity + cross(b.m_angularVelocity, point - b.m_position);
+            const double closing = dot(va - vb, normal);
+            const double load = clamp(a.m_hullStiffness*depth + a.m_hullDamping*closing, 0.0, a.m_maxPush);
+            b.push(normal * load, point);
+            a.push(normal * -load, point);
+        }
+    }
+}
+
+// Only the turning part of the torque is kept: a bump must not roll or pitch the truck
+void Truck::push(const Vec3& force, const Vec3& point)
+{
+    m_pushForce += force;
+    m_pushTorque.y += cross(point - m_position, force).y;
 }
 
 void Truck::steer(double dt, const Controls& controls)

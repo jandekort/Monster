@@ -189,7 +189,8 @@
             gl.drawArrays(gl.TRIANGLES, 0, count);
 
             const fields = readString(game, game.monster_hud()).split("|");
-            hud.speed.innerHTML = fields[0] + " km/h<br>LAP " + fields[4] + "&nbsp; " + fields[5] + " s" +
+            hud.speed.innerHTML = (Number(fields[14]) > 1 ? "P" + fields[13] + "/" + fields[14] + "&nbsp; " : "") +
+                fields[0] + " km/h<br>LAP " + fields[4] + "/" + fields[15] + "&nbsp; " + fields[5] + " s" +
                 (Number(fields[6]) > 0.0 ? "<br>BEST LAP " + fields[6] + " s" : "") +
                 "<br>CHECKPOINT " + fields[7] + "/" + fields[8] +
                 "<br>TYRES " + fields[9] + " " + fields[10] +

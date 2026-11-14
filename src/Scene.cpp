@@ -137,7 +137,10 @@ void Scene::build(const Game& game, const Vec3& eye)
     addWreck(game.getTerrain().getWreck());
     plantTrees(game.getTerrain().getTrack());
     addScenery();
-    addTruck(game.getTruck());
+    for (const Racer& racer : game.getRacers())
+    {
+        addTruck(racer.m_truck, racer.m_color);
+    }
 }
 
 void Scene::addGround(const Vec3& eye)
@@ -446,12 +449,11 @@ void Scene::addScenery()
     }
 }
 
-void Scene::addTruck(const Truck& truck)
+void Scene::addTruck(const Truck& truck, const Color& paint)
 {
     const Vec3 f = truck.forward();
     const Vec3 u = truck.up();
     const Vec3 r = truck.right();
-    const Color paint(0.85f, 0.12f, 0.10f);
     const Color trim(0.95f, 0.80f, 0.15f);
     const Color glass(0.60f, 0.82f, 0.95f);
     const Color steel(0.22f, 0.22f, 0.25f);

@@ -25,6 +25,9 @@ function check(condition, what) {
 
 game._initialize();
 game.monster_init();
+
+// Alone on the circuit first: no opponents to crush the wreck or get in the way
+game.monster_start_race(0);
 game.monster_set_controls(1.0, 0.0, 0.0);
 let sawAir = false;
 let sawLanding = false;
@@ -44,7 +47,7 @@ check(count > 1000 && count % 3 === 0, "scene has triangles");
 check(vertices.every(Number.isFinite), "vertices are finite");
 check(matrix.every(Number.isFinite), "view projection is finite");
 check(Number(fields[1]) >= 500, "crushing and jumping score points");
-check(fields.length === 13 && fields[4] === "1" && Number(fields[5]) > 10.0, "lap and lap time are reported");
+check(fields.length === 17 && fields[4] === "1" && Number(fields[5]) > 10.0, "lap and lap time are reported");
 check(Number(fields[7]) >= 1 && fields[8] === "4", "a gate driven through is counted");
 check(sawAir, "truck gets airborne");
 check(sawLanding, "landing is rated");
@@ -65,5 +68,30 @@ check(hud()[9] === String(5), "an out of range setup is clamped");
 game.monster_reset();
 check(hud()[9] === "5", "reset keeps the tyre setup");
 check(hud()[1] === "0" && Number(hud()[2]) >= 500, "reset keeps the best score");
+
+// The race: three opponents on the grid ahead of the player
+check(hud()[13] === "1" && hud()[14] === "1", "alone, the player is first of one");
+game.monster_start_race(3);
+game.monster_step(1.0 / 60.0);
+const soloCount = count;
+const raceCount = game.monster_render(1.6);
+check(hud()[13] === "4" && hud()[14] === "4" && hud()[15] === "3", "the race starts with the player fourth of four, over three laps");
+check(raceCount > soloCount, "the opponents are drawn (" + raceCount + " vertices against " + soloCount + ")");
+game.monster_set_controls(1.0, 0.0, 0.0);
+let frameTime = 0.0;
+for (let frame = 0; frame < 60 * 30; ++frame) {
+    const before = performance.now();
+    game.monster_step(1.0 / 60.0);
+    game.monster_render(1.6);
+    frameTime += performance.now() - before;
+}
+const raceVertices = new Float32Array(game.memory.buffer, game.monster_vertices(), game.monster_render(1.6) * 6);
+console.log("    hud " + hud().join(" | "));
+console.log("    step and scene build: " + (frameTime / (60 * 30)).toFixed(3) + " ms per frame");
+check(raceVertices.every(Number.isFinite), "the race renders finite vertices");
+check(Number(hud()[13]) >= 1 && Number(hud()[13]) <= 4 && hud()[16] === "0", "the player has a position in the field");
+check(frameTime / (60 * 30) < 8.0, "a frame of simulation and scene building fits well inside 16.7 ms");
+game.monster_reset();
+check(hud()[13] === "4" && hud()[4] === "1" && hud()[1] === "0", "restarting puts the player back on the grid");
 
 process.exit(failures === 0 ? 0 : 1);

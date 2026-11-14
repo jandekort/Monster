@@ -71,7 +71,7 @@ private:
     void plantTrees(const Track& track);
     void addWreck(const Wreck& wreck);
     void addScenery();
-    void addTruck(const Truck& truck);
+    void addTruck(const Truck& truck, const Color& paint);
     void addWheel(const Vec3& center, const Vec3& axle, const Vec3& up, double radius, double halfWidth, double spin);
 
     Mesh m_mesh;

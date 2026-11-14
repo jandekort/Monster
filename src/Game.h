@@ -1,61 +1,86 @@
-// Monster - the game: one truck, one course, one score
+// Monster - the game: the circuit, the racers on it and the rules they race by
 // Author: Jan de Kort
 // Created: 2026-11-14
 #pragma once
 
-#include "Judge.h"
+#include "Racer.h"
 #include "Terrain.h"
-#include "Truck.h"
 
 #include <string>
+#include <vector>
 
 // Class Game
+// A race over a fixed number of laps. The racer at index 0 is the player and the rest are driven
+// by the computer; with no opponents the player has the circuit alone. The accessors without a
+// racer argument describe the player.
 class Game
 {
 public:
-    Game();
+    explicit Game(size_t opponents);
+
+    static size_t maxOpponents();
 
     // Mutator
     void reset();
-    void recover(); // set the truck upright at the last checkpoint it cleared
+    void recover(); // set the player's truck upright at the last checkpoint it cleared
     void startAt(size_t pointIndex); // begin a fresh lap from a given point of the circuit
     void step(double elapsed); // advances the simulation in fixed steps
-    void setControls(const Controls& controls) { m_controls = controls; }
+    void setControls(const Controls& controls) { player().m_controls = controls; }
     void selectSetup(int index); // tyre setup, 1 is the softest; out of range values are clamped
 
     // Accessor
-    const Truck& getTruck() const { return m_truck; }
+    const std::vector<Racer>& getRacers() const { return m_racers; }
+    const Racer& getPlayer() const { return m_racers.front(); }
     const Terrain& getTerrain() const { return m_terrain; }
-    const Judge& getJudge() const { return m_judge; }
+
+    const Truck& getTruck() const { return getPlayer().m_truck; }
+    const Judge& getJudge() const { return getPlayer().m_judge; }
     int getScore() const;
+    int getScore(const Racer& racer) const; // jumps, stunts and this racer's share of the wreck
     int getBestScore() const { return m_best; }
     int getCrushPoints() const;
-    bool isWrecked() const { return m_wrecked; }
-    bool needsRecovery() const { return m_wrecked || m_truck.getPosition().y < m_floor; }
-    size_t getProgress() const { return m_progress; } // index of the last track point reached
-    int getLap() const { return m_lap; }              // 1->first lap
-    double getLapTime() const { return m_lapTime; }
-    double getBestLapTime() const { return m_bestLapTime; } // negative->no lap finished yet
-    int getSetupIndex() const { return m_setupIndex; }
-    const char* getSetupName() const { return Truck::setupName(m_setupIndex); }
-    int getCheckpointsPassed() const;
+    int getCrushPoints(const Racer& racer) const;
+    bool isWrecked() const { return getPlayer().m_wrecked; }
+    bool needsRecovery() const { return isWrecked() || getTruck().getPosition().y < m_floor; }
+    size_t getProgress() const { return getPlayer().m_progress; } // index of the last track point reached
+    int getLap() const { return getPlayer().m_lap; }              // 1->first lap
+    double getLapTime() const { return getPlayer().m_lapTime; }
+    double getBestLapTime() const { return getPlayer().m_bestLapTime; } // negative->no lap finished yet
+    int getSetupIndex() const { return getPlayer().m_setupIndex; }
+    const char* getSetupName() const { return Truck::setupName(getSetupIndex()); }
+    int getCheckpointsPassed() const { return getPlayer().getCheckpointsPassed(); }
     int getCheckpointCount() const;
-    bool lapIsComplete() const; // every checkpoint of the current lap has been passed
+    bool lapIsComplete() const { return getPlayer().lapIsComplete(); }
+
+    // Race
+    int getRaceLaps() const { return m_raceLaps; }
+    double getRaceTime() const { return m_raceClock; }
+    bool isRaceOver() const { return getPlayer().m_finished; } // the race ends when the player finishes
+    int getPosition() const { return getPosition(getPlayer()); }
+    int getPosition(const Racer& racer) const; // 1->leading
     // "speed|score|best|message|lap|lap time|best lap time|checkpoints passed|checkpoints"
-    // "|tyre setup|setup name|grip|top speed in km/h"
+    // "|tyre setup|setup name|grip|top speed in km/h|position|racers|race laps|finished""
     std::string hudString() const;
 
 private:
-    void placeOnTrack(size_t index); // upright and at rest on the centreline
-    void updateProgress();
-    void updateStunts();
-    void updateCheckpoints();
-    void clearCheckpoints();
+    Racer& player() { return m_racers.front(); }
 
-    Truck m_truck;
+    // The rules, one racer at a time
+    void resetRacer(Racer& racer);
+    void placeOnGrid(Racer& racer);
+    void collideRacers();
+    bool isAhead(const Racer& a, const Racer& b) const;
+    void updateStuck(Racer& racer, size_t progressBefore);
+    void stepRacer(Racer& racer);
+    void placeOnTrack(Racer& racer, size_t index); // upright and at rest on the centreline
+    void recover(Racer& racer);
+    void updateCheckpoints(Racer& racer);
+    void updateProgress(Racer& racer);
+    void updateStunts(Racer& racer);
+    void updateWrecked(Racer& racer);
+
+    std::vector<Racer> m_racers;
     Terrain m_terrain;
-    Judge m_judge;
-    Controls m_controls;
 
     double m_fixedStep;
     double m_maxElapsed;      // longest frame time that is simulated [s]
@@ -72,31 +97,15 @@ private:
     size_t m_gateWindow;      // track points searched ahead of the last one reached
     double m_gateDepth;       // how far either side of a gate its two lines lie [m]
     double m_gateReach;       // the truck must be this near a gate to be crossing it [m]
+    int m_raceLaps;
+    double m_gridFront;       // front row behind the start line [m]
+    double m_gridRow;         // one grid slot behind the next [m]
+    double m_gridLane;        // the two columns stand this far either side of the centreline [m]
+    double m_stuckDelay;      // a computer driver making no progress this long is recovered [s]
 
-    double m_tippedClock;
-    double m_wreckedClock;    // seconds since the truck was wrecked
-    bool m_wrecked;           // true->truck is stuck on its side or roof
+    double m_raceClock;       // seconds since the start
+    int m_finishers;          // racers that have completed the race distance
+
     double m_crushClock;      // seconds since the wreck was flattened, negative->not yet
-    int m_best;
-    int m_setupIndex;         // kept across reset(), so a restart does not undo the choice
-    size_t m_progress;
-    int m_lap;
-    double m_lapTime;
-    double m_bestLapTime;
-    // How far the truck has got with a gate. It has to come up to the gate and then leave it on
-    // the far side, so that driving past the back of one does not clear it.
-    enum class Crossing
-    {
-        Away,
-        Approached,
-        Cleared
-    };
-
-    std::vector<Crossing> m_crossing; // one per gate, given up every lap
-    double m_lapClock;        // seconds since the last lap was finished, negative->none yet
-    double m_missedClock;     // seconds since a lap was rejected, negative->none yet
-    double m_lastLapTime;
-    bool m_loopDone;          // true->loop already scored this lap
-    double m_loopClock;       // seconds since the loop was scored, negative->not yet
-    int m_stuntScore;         // loop points collected this run
+    int m_best;               // the player's best score over all runs
 };

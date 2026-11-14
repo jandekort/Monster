@@ -13,6 +13,16 @@ namespace
     // Struct App: everything the page talks to
     struct App
     {
+        App()
+            :
+            m_game(Game::maxOpponents())
+            , m_camera()
+            , m_scene()
+            , m_viewProjection()
+            , m_hud()
+        {
+        }
+
         Game m_game;
         ChaseCamera m_camera;
         Scene m_scene;
@@ -39,6 +49,14 @@ MONSTER_EXPORT(monster_init) void monster_init()
 MONSTER_EXPORT(monster_reset) void monster_reset()
 {
     app().m_game.reset();
+    app().m_camera.snap();
+}
+
+// A fresh race against the given number of opponents; none leaves the circuit to the player
+MONSTER_EXPORT(monster_start_race) void monster_start_race(int opponents)
+{
+    const int most = (int) Game::maxOpponents();
+    app().m_game = Game((size_t) (opponents < 0 ? 0 : (opponents > most ? most : opponents)));
     app().m_camera.snap();
 }
 

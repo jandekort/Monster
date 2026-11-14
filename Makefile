@@ -6,7 +6,7 @@
 WASI_SDK ?= /opt/wasi-sdk
 CXX      ?= c++
 
-CORE := src/Track.cpp src/Terrain.cpp src/Truck.cpp src/Judge.cpp src/Game.cpp
+CORE := src/Track.cpp src/Terrain.cpp src/Truck.cpp src/Judge.cpp src/Driver.cpp src/Racer.cpp src/Game.cpp
 VIEW := src/Mesh.cpp src/Scene.cpp
 HEADERS := $(wildcard src/*.h)
 
@@ -23,9 +23,9 @@ wasm: docs/monster.wasm
 docs/monster.wasm: $(CORE) $(VIEW) src/wasm_api.cpp $(HEADERS)
 	$(WASI_SDK)/bin/clang++ $(WASM_FLAGS) -Isrc $(CORE) $(VIEW) src/wasm_api.cpp -o $@
 
-build/test_game: $(CORE) tests/Autopilot.cpp tests/Autopilot.h tests/test_game.cpp $(HEADERS)
+build/test_game: $(CORE) tests/test_game.cpp $(HEADERS)
 	@mkdir -p build
-	$(CXX) -std=c++17 -O2 -Wall -Wextra -Isrc -Itests $(CORE) tests/Autopilot.cpp tests/test_game.cpp -o $@
+	$(CXX) -std=c++17 -O2 -Wall -Wextra -Isrc $(CORE) tests/test_game.cpp -o $@
 
 test: build/test_game
 	./build/test_game

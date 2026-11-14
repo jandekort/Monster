@@ -3,29 +3,11 @@
 // Created: 2026-11-14
 #pragma once
 
+#include "Color.h"
 #include "Math.h"
 
 #include <cstddef>
 #include <vector>
-
-// Struct Color
-struct Color
-{
-    float r = 1.0f;
-    float g = 1.0f;
-    float b = 1.0f;
-
-    Color() = default;
-    Color(float r, float g, float b)
-        :
-        r(r)
-        , g(g)
-        , b(b)
-    {
-    }
-
-    Color scaled(float s) const { return Color(r*s, g*s, b*s); }
-};
 
 // Class Mesh
 // Vertex layout: x, y, z, r, g, b (six floats). Lighting is baked into the colour.

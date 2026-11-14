@@ -4,6 +4,19 @@ A Stunts-style stunt driving game with a monster truck, written in C++ and
 compiled to WebAssembly. One truck on a figure-eight circuit of about 990 m
 with a crushable wreck, a tunnel, a jump, a loop and a bridge.
 
+## The race
+
+Three laps against three computer driven trucks, BLUE, YELLOW and GREEN, from a
+staggered grid behind the start line with the player at the back. The HUD shows
+the player's position in the field and the lap out of three. The race ends when
+the player finishes; R restarts it from the grid.
+
+The opponents drive by the same rules as the player: they clear the same gates
+to be credited a lap, they are set upright again after a crash, and one that
+stops making progress for six seconds is put back at its last gate. Trucks bump
+each other but do not drive through each other. The wreck's points go to whoever
+crushes it.
+
 ## The circuit
 
 The two straights of the eight cross at different levels. A lap runs: start
@@ -77,13 +90,16 @@ committed `monster.wasm` does not match the sources.
 | `src/Terrain.*` | collision world: ground plane, road surfaces, walls, jump ramps, wreck; ray casts |
 | `src/Truck.*` | rigid body, ray-cast suspension, tyres, air control |
 | `src/Judge.*` | air time, flips and landing rating |
-| `src/Game.*` | fixed time step loop, score, laps, HUD text |
+| `src/Driver.*` | the computer driver: follows the centreline, brakes for bends, floors it for the loop; its `Style` sets the pace |
+| `src/Racer.*` | one competitor: truck, judge, controls or driver, lap, checkpoint and race state, colour, name |
+| `src/Game.*` | the race: the list of racers (index 0 is the player), the grid, fixed time step loop, the rules applied per racer, contact between trucks, positions, score, HUD text |
+| `src/Color.h` | RGB colour, shared by the game core and the renderer |
 | `src/Mesh.*`, `src/Scene.*` | flat shaded triangle list and chase camera |
 | `src/wasm_api.cpp` | C functions exported to JavaScript |
 | `docs/` | the published site: page, WebGL drawing, input, built `monster.wasm` |
-| `tests/` | native tests (with an autopilot that drives a full lap) and the wasm smoke test |
+| `tests/` | native tests (physics alone on the circuit, then full races) and the wasm smoke test |
 
-The game core (`Track`, `Terrain`, `Truck`, `Judge`, `Game`) has no platform
+The game core (`Track`, `Terrain`, `Truck`, `Judge`, `Driver`, `Racer`, `Game`) has no platform
 dependencies. The C++ side produces a vertex buffer and a view-projection
 matrix each frame; `web/monster.js` only uploads and draws them.
 
@@ -91,6 +107,11 @@ Collision is done with ray casts against the road faces, so surfaces can be
 stacked (bridge over road) or upside down (loop). Each wheel casts a fan of
 rays along the suspension axis; chassis and roof points are tested with rays
 from the centre of mass. Trees and mountains are scenery without collision.
+
+Trucks are not in the ray cast world. Each carries a hull of six spheres, and
+where the hulls of two trucks overlap they are pushed apart by a spring and a
+damper, level with the ground, so a bump can shove or turn a truck but never
+lift it or press it into the road.
 
 The wasm build is compiled without exceptions, so contract checks go through
 `require()` in `src/Check.h`: it throws `std::logic_error` natively and traps
