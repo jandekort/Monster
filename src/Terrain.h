@@ -20,7 +20,8 @@ struct Face
         Flank,    // side of a jump ramp
         Concrete, // bridge walls and underside
         DirtPale, // the two shades the dirt road is tiled in
-        DirtDark
+        DirtDark,
+        Bank      // the grassy sides of the cutting the dirt road runs in
     };
 
     static double traction(Surface surface); // 1->tarmac, less->looser going
@@ -150,6 +151,8 @@ private:
 
     void placeDirtRoad();
     void buildDirtRoad();
+    void buildRamps();
+    void buildRamp(const Vec3& from, const Vec3& to);
     void placeWrecks();
     void buildRoad();
     void buildSlabs();
@@ -162,6 +165,8 @@ private:
     DirtRoad m_dirt;
     double m_dirtOffset;  // from the bridge to the dirt road, to its right [m]
     double m_dirtTile;    // side of one tile of the dirt road [m]
+    double m_rampHalfWidth; // of the slip roads onto and off the dirt road [m]
+    double m_rampReach;     // how far along the dirt road a slip road runs out [m]
     std::vector<Slab> m_slabs;
     std::vector<Wreck> m_wrecks;
     size_t m_wreckCount;

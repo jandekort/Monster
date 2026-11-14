@@ -255,6 +255,9 @@ void Scene::addFaces(const Terrain& terrain)
         case Face::Surface::DirtDark:
             color = dirtDark;
             break;
+        case Face::Surface::Bank:
+            color = Color(0.28f, 0.58f, 0.24f); // the grass the cutting is dug out of
+            break;
         default:
             require(false, "Scene::addFaces: unknown surface");
         }

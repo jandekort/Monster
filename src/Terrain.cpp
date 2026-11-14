@@ -35,6 +35,8 @@ double Face::traction(Surface surface)
     case Surface::DirtPale:
     case Surface::DirtDark:
         return 0.86;
+    case Surface::Bank:
+        return 0.70; // grass, the same going as the rest of the verge
     default:
         require(false, "Face::traction: unknown surface");
         return 1.0;
@@ -135,6 +137,8 @@ Terrain::Terrain()
     , m_dirt()
     , m_dirtOffset(30.5)
     , m_dirtTile(3.5)
+    , m_rampHalfWidth(4.0)
+    , m_rampReach(20.0)
     , m_slabs()
     , m_wrecks()
     , m_wreckCount(3)
@@ -162,6 +166,7 @@ Terrain::Terrain()
     placeWrecks();
     buildRoad();
     buildDirtRoad();
+    buildRamps();
     buildSlabs();
     buildGrid();
 }
@@ -204,9 +209,68 @@ void Terrain::buildDirtRoad()
     {
         for (int j = 0; j < along; ++j)
         {
-            addFace(Face(corner(i, j), corner(i, j + 1), corner(i + 1, j + 1), corner(i + 1, j),
-                ((i + j) & 1) != 0 ? Face::Surface::DirtPale : Face::Surface::DirtDark, true));
+            // Only the flat bottom of the cutting is dirt; its sides stay grass
+            const double across = -m_dirt.halfWidth() + stepAcross * (i + 0.5);
+            const Face::Surface shade = std::fabs(across) > m_dirt.m_halfFloor
+                ? Face::Surface::Bank
+                : (((i + j) & 1) != 0 ? Face::Surface::DirtPale : Face::Surface::DirtDark);
+            addFace(Face(corner(i, j), corner(i, j + 1), corner(i + 1, j + 1), corner(i + 1, j), shade, true));
         }
+    }
+}
+
+// Slip roads joining the main road to the dirt road, before the bridge rises and after it comes
+// back down, so the dirt road is a way round the broken bridge rather than a ditch beside it
+void Terrain::buildRamps()
+{
+    const std::vector<PathPoint>& points = m_track.getPoints();
+    const PathPoint& gap = m_track.getGapCentre();
+    const size_t centre = (size_t) (&gap - &points.front());
+
+    size_t before = centre;
+    while (before > 0 && points[before].m_kind != PathPoint::Kind::Flat)
+    {
+        --before;
+    }
+    size_t after = centre;
+    while (after + 1 < points.size() && points[after].m_kind != PathPoint::Kind::Flat)
+    {
+        ++after;
+    }
+    require(before < centre && after > centre, "Terrain::buildRamps: the bridge has no ends at ground level");
+
+    // Where the slip road meets the dirt road, measured along it from where the main road leaves
+    const auto meeting = [&](const Vec3& leaving, double along)
+    {
+        return m_dirt.m_centre
+            + m_dirt.m_forward * (dot(leaving - m_dirt.m_centre, m_dirt.m_forward) + along);
+    };
+
+    const double edge = m_track.getHalfWidth();
+    const Vec3 off = points[before].m_position + points[before].m_cross * edge;
+    const Vec3 on = points[after].m_position + points[after].m_cross * edge;
+    buildRamp(off, meeting(off, m_rampReach));
+    buildRamp(meeting(on, -m_rampReach), on);
+}
+
+// Laid on the ground and following the side of the cutting down, so it is never buried
+void Terrain::buildRamp(const Vec3& from, const Vec3& to)
+{
+    const Vec3 along = to - from;
+    const int steps = std::max(1, (int) std::ceil(length(along) / m_dirtTile));
+    const Vec3 side = normalize(cross(Vec3(0.0, 1.0, 0.0), normalize(along))) * m_rampHalfWidth;
+    const auto lay = [&](const Vec3& point)
+    {
+        const Vec3 flat(point.x, 0.0, point.z);
+        return flat + Vec3(0.0, m_dirt.height(flat) + 0.02, 0.0);
+    };
+
+    for (int i = 0; i < steps; ++i)
+    {
+        const Vec3 a = from + along * (i / (double) steps);
+        const Vec3 b = from + along * ((i + 1) / (double) steps);
+        addFace(Face(lay(a - side), lay(b - side), lay(b + side), lay(a + side),
+            (i & 1) != 0 ? Face::Surface::DirtPale : Face::Surface::DirtDark, true));
     }
 }
 
