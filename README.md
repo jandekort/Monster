@@ -1,9 +1,9 @@
 # Monster
 
 A Stunts-style stunt driving game with a monster truck, written in C++ and
-compiled to WebAssembly. One truck on a figure-eight circuit of about 990 m
-with a row of crushable wrecks, a tunnel, a jump over a sunken dirt road, a
-loop, and a bridge with a hole in it.
+compiled to WebAssembly. A figure-eight circuit of about 1200 m with a tunnel,
+a jump over a sunken dirt road, a loop, a closed bridge with a hole in it, a
+row of crushable wrecks, and a shortcut across a river by a collapsed log bridge.
 
 ## The race
 
@@ -22,17 +22,16 @@ flattens them.
 
 The two straights of the eight cross at different levels. A lap runs: start
 line, tunnel under the bridge, the jump over the dirt road, two right-hand
-bends, loop, another
-right-hand bend, over the bridge and its hole, two left-hand bends, the last
-gate, the row
-of wrecks, a last left-hand bend and the run back to the line. The starting grid
-stands on that last straight.
+bends, loop, another right-hand bend, the barrier, over the bridge and its
+hole, a left-hand bend, the last gate, the row of wrecks, a long straight, two
+more left-hand bends and a long run back to the line. The starting grid stands
+on that last straight.
 
 The loop is a helix on a slightly turned cylinder, so the road enters and
 leaves it tangentially: keep the wheels straight and the throttle open and the
 truck comes out in the exit lane. It needs roughly 75 km/h at the entry.
-Track points must be passed in order, so a lap only counts if the loop and the
-bridge are driven.
+Track points must be passed in order and a lap only counts with all four gates,
+so the loop cannot be skipped.
 
 The bridge deck is missing for nine metres at the top of the climb, well before
 the middle of the bridge, and the road kicks up into a lip just before the hole.
@@ -50,9 +49,34 @@ The opponents take the dirt road on three laps out of four, decided afresh
 every lap. It is the slower way round, so the bridge is where the player can
 overtake.
 
+A striped barrier stands across the road before the ramp to the bridge, beyond
+the mouth of the dirt road, with a BRIDGE CLOSED sign on the verge. The barrier
+does not stop a truck: the first one to drive on to the bridge knocks it flat,
+and it lies on the road until the race is restarted. The sign stays.
+
+After the last gate and the wrecks a second dirt road leaves the main road to
+the left and cuts inside the last two bends. It crosses a river and rejoins the
+main road just before the start and finish line. The river lies 2.1 m below
+the road and is 0.9 m deep, so the track goes down a bank to it and climbs out
+again on the far side. In the water a truck makes 25 km/h at most, and
+whatever speed it arrives with above that is dragged off.
+
+What is left of a log bridge reaches from the near bank to the middle of the
+river, its logs lying across the way a truck drives. Its left hand side has
+collapsed on to the river floor, so the deck is tipped over sideways and only a
+lane along its right hand edge is above the water, about 4.5 m wide: little
+more than a truck. At the broken end the deck dips under water, and the second
+half of the bridge has gone, so from the middle of the river a truck has to
+wade. Wheels on the sunken side of the bridge are in the water and are held
+back like any others. Taken with care the shortcut saves about four seconds
+over the road; taken flat out it usually ends on the roof. The piles, ropes,
+reeds, rocks and floating logs are scenery and do not stop a truck. The
+computer drivers never take this shortcut.
+
 The going differs by surface. The road and the bridge are quickest, the dirt
-road a little slower, and the grass slower still, so cutting a corner costs more
-than it saves.
+roads and the logs a little slower, the gravel of the riverbed slower again,
+and the grass slowest, so cutting a corner over the grass costs more than it
+saves.
 
 ## Controls
 
@@ -113,7 +137,7 @@ committed `monster.wasm` does not match the sources.
 |---|---|
 | `src/Math.h` | vector, quaternion and matrix types |
 | `src/Track.*` | centreline of the circuit: straights, bends, bridge profile, loop |
-| `src/Terrain.*` | collision world: ground plane, road surfaces, walls, jump ramps, the row of wrecks; ray casts |
+| `src/Terrain.*` | collision world: ground plane, road surfaces, walls, jump ramps, the row of wrecks, the two dirt roads, the river and its log bridge, the barrier; ray casts |
 | `src/Truck.*` | rigid body, ray-cast suspension, tyres, air control |
 | `src/Judge.*` | air time, flips and landing rating |
 | `src/Driver.*` | the computer driver: follows the centreline, brakes for bends, floors it for the loop; its `Style` sets the pace |

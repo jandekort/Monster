@@ -26,6 +26,7 @@ Track::Track()
     , m_checkpointCount(4)
     , m_gateMargin(0.8)
     , m_gateClearance(8.0)
+    , m_homeRun(80.0)
     , m_cursor(20.0, 0.0, 0.0)
     , m_angle(0.0)
 {
@@ -42,13 +43,15 @@ Track::Track()
     const double loopRadius = 10.0;
     const double loopShift = 10.5;  // exit lane lies this far right of the entry lane
     const double bridgeExit = 80.0; // bridge straight beyond the crossing
+    const double approach = 24.0;   // level road before the bridge starts to climb: the dirt road
+                                    // leaves it here, and the barrier stands beyond that
 
     addPoint(m_cursor, heading(), rightward(), Vec3(0.0, 1.0, 0.0), PathPoint::Kind::Flat, false, 0.0);
 
     { // Right lobe: wreck, tunnel, jump, then the loop on the back straight
         addStraight(crossing - m_cursor.x + startRun);
         addArc(corner, quarter);
-        addStraight(sideRun + loopShift);
+        addStraight(sideRun + loopShift + approach);
         addArc(corner, quarter);
         addStraight(loopRunUp);
         const double advance = addLoop(loopRadius, loopShift);
@@ -57,9 +60,9 @@ Track::Track()
     }
 
     { // Left lobe: over the bridge and back to the start line
-        addBridge(corner + sideRun + bridgeExit, corner + sideRun);
+        addBridge(approach + corner + sideRun + bridgeExit, approach + corner + sideRun);
         addArc(corner, -quarter);
-        addStraight(sideRun);
+        addStraight(sideRun + m_homeRun); // the last two bends come late: a long run home
         addArc(corner, -quarter);
         addStraight(bridgeExit - corner);
         addArc(corner, -quarter);
@@ -72,7 +75,8 @@ Track::Track()
 }
 
 // A gate needs level, straight road around it, so that it stands upright beside the road and
-// spans it squarely: never in a bend, on the bridge or inside the loop.
+// spans it squarely: never in a bend, on the bridge or inside the loop. Nor on the level road
+// either side of the bridge, which a truck going round by the dirt road does not drive.
 bool Track::canCarryGate(size_t index) const
 {
     const double here = m_points[index].m_distance;
@@ -80,15 +84,16 @@ bool Track::canCarryGate(size_t index) const
         [&](const PathPoint& point)
         {
             return std::fabs(point.m_distance - here) <= m_gateClearance
-                && (point.m_kind != PathPoint::Kind::Flat || point.m_corner);
+                && (point.m_kind != PathPoint::Kind::Flat || point.m_corner || point.m_branch);
         });
 }
 
 // The gates are spread evenly over the lap, between one crossing of the start line and the
-// next. Each one then moves to the nearest piece of road that can carry it.
+// next, leaving out the extra length of the run home: that part has the wrecks and the shortcut
+// instead. Each gate then moves to the nearest piece of road that can carry it.
 void Track::chooseCheckpoints()
 {
-    const double spacing = getLength() / (m_checkpointCount + 1);
+    const double spacing = (getLength() - 2.0 * m_homeRun) / (m_checkpointCount + 1);
     const size_t none = m_points.size();
 
     m_checkpoints.clear();
@@ -219,6 +224,7 @@ void Track::addBridge(double length, double crest)
         }
         m_cursor = start + heading() * s;
         addPoint(m_cursor + Vec3(0.0, h, 0.0), forward, rightward(), cross(rightward(), forward), kind, false, step);
+        m_points.back().m_branch = kind == PathPoint::Kind::Flat;
     }
 }
 

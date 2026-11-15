@@ -64,8 +64,9 @@ struct Racer
     double m_wreckedClock;    // seconds since the truck was wrecked
     bool m_wrecked;           // true->truck is stuck on its side or roof
     double m_stuckClock;      // seconds since a computer driver last made progress
-    bool m_detour;            // true->taking the dirt road round the bridge this time
-    int m_routeLap;           // lap for which the route was last chosen
+    int m_detour;             // which dirt road is being taken, negative->keeping to the circuit
+    int m_routeChoice;        // the last choice of route made, so that each is made once
+    bool m_shaken;            // true->came to grief, and plays safe at the next choices
 
     // Messages and stunts
     double m_lapClock;        // seconds since the last lap was finished, negative->none yet

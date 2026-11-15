@@ -72,7 +72,7 @@ private:
     bool isAhead(const Racer& a, const Racer& b) const;
     void updateStuck(Racer& racer, size_t progressBefore);
     void chooseRoute(Racer& racer);
-    bool onDetour(const Racer& racer) const;
+    const Detour* detourOf(const Racer& racer) const; // the dirt road a racer is on, or none
     void stepRacer(Racer& racer);
     void placeOnTrack(Racer& racer, size_t index); // upright and at rest on the centreline
     void recover(Racer& racer);
@@ -104,7 +104,8 @@ private:
     double m_gridRow;         // one grid slot behind the next [m]
     double m_gridLane;        // the two columns stand this far either side of the centreline [m]
     double m_stuckDelay;      // a computer driver making no progress this long is recovered [s]
-    double m_detourShare;     // how often a computer driver takes the dirt road round the bridge
+    size_t m_routeWindow;     // track points before a junction over which the route is chosen
+    double m_missedGrace;     // a lap that does not count is not announced this early in the race [s]
     unsigned m_dice;          // state of the generator the route choices are drawn from
 
     double m_raceClock;       // seconds since the start

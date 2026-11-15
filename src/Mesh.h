@@ -24,6 +24,15 @@ public:
         const Vec3& halfSize, const Color& color);
     void addPyramid(const Vec3& baseCenter, double halfBase, double height, const Color& color);
 
+    // A convex outline in the plane of axisX and axisY (z is ignored), drawn out along axisZ to
+    // halfWidth either side. Where the outline meets the two end faces the edge is cut back by
+    // bevel, which takes the squareness off.
+    // A round bar of eight flat sides from one end to the other, its ends in their own colour
+    void addCylinder(const Vec3& from, const Vec3& to, double radius, const Color& side, const Color& end);
+
+    void addPrism(const Vec3& origin, const Vec3& axisX, const Vec3& axisY, const Vec3& axisZ,
+        const std::vector<Vec3>& outline, double halfWidth, double bevel, const Color& color);
+
     // Accessor
     const float* data() const { return m_vertices.data(); }
     size_t vertexCount() const { return m_vertices.size() / m_floatsPerVertex; }

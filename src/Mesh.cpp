@@ -3,7 +3,10 @@
 // Created: 2026-11-14
 #include "Mesh.h"
 
+#include "Check.h"
+
 #include <algorithm>
+#include <numeric>
 
 Mesh::Mesh()
     :
@@ -74,4 +77,87 @@ void Mesh::addPyramid(const Vec3& baseCenter, double halfBase, double height, co
     addTriangle(b, c, apex, color, normalize(Vec3( height, halfBase, 0.0)));
     addTriangle(c, d, apex, color, normalize(Vec3( 0.0, halfBase,  height)));
     addTriangle(d, a, apex, color, normalize(Vec3(-height, halfBase, 0.0)));
+}
+
+void Mesh::addPrism(const Vec3& origin, const Vec3& axisX, const Vec3& axisY, const Vec3& axisZ,
+    const std::vector<Vec3>& outline, double halfWidth, double bevel, const Color& color)
+{
+    const size_t count = outline.size();
+    require(count >= 3, "Mesh::addPrism: an outline needs three corners");
+    require(bevel >= 0.0 && bevel < halfWidth, "Mesh::addPrism: bevel must be smaller than halfWidth");
+
+    const Vec3 middle = std::accumulate(outline.begin(), outline.end(), Vec3()) * (1.0 / count);
+
+    // Outward normal of each edge, in the plane of the outline
+    std::vector<Vec3> normals;
+    normals.reserve(count);
+    for (size_t i = 0; i < count; ++i)
+    {
+        const Vec3& p = outline[i];
+        const Vec3& q = outline[(i + 1) % count];
+        const Vec3 normal = normalize(Vec3(q.y - p.y, p.x - q.x, 0.0));
+        normals.push_back(dot(normal, (p + q) * 0.5 - middle) < 0.0 ? -normal : normal);
+    }
+
+    // The outline of the end faces: every corner moved in by bevel from both edges it lies on
+    std::vector<Vec3> inner;
+    inner.reserve(count);
+    for (size_t i = 0; i < count; ++i)
+    {
+        const Vec3& before = normals[(i + count - 1) % count];
+        const Vec3& after = normals[i];
+        inner.push_back(outline[i] - (before + after) * (bevel / (1.0 + dot(before, after))));
+    }
+
+    const auto world = [&](const Vec3& corner, double z)
+    {
+        return origin + axisX * corner.x + axisY * corner.y + axisZ * z;
+    };
+    const double flat = halfWidth - bevel;
+    for (size_t i = 0; i < count; ++i)
+    {
+        const size_t j = (i + 1) % count;
+        const Vec3 normal = axisX * normals[i].x + axisY * normals[i].y;
+        addQuad(world(outline[i], -flat), world(outline[j], -flat), world(outline[j], flat), world(outline[i], flat),
+            color, normal);
+        for (double side : { -1.0, 1.0 })
+        {
+            addQuad(world(outline[i], side * flat), world(outline[j], side * flat),
+                world(inner[j], side * halfWidth), world(inner[i], side * halfWidth),
+                color, normalize(normal + axisZ * side));
+        }
+    }
+    for (double side : { -1.0, 1.0 })
+    {
+        for (size_t i = 1; i + 1 < count; ++i)
+        {
+            addTriangle(world(inner[0], side * halfWidth), world(inner[i], side * halfWidth),
+                world(inner[i + 1], side * halfWidth), color, axisZ * side);
+        }
+    }
+}
+
+void Mesh::addCylinder(const Vec3& from, const Vec3& to, double radius, const Color& side, const Color& end)
+{
+    const int sides = 8;
+    const Vec3 axis = normalize(to - from);
+    const Vec3 upward(0.0, 1.0, 0.0);
+    const Vec3 level(1.0, 0.0, 0.0);
+    const Vec3 lift = upward - axis * dot(upward, axis);
+    const Vec3 high = length(lift) > 0.2 ? normalize(lift) : normalize(level - axis * dot(level, axis));
+    const Vec3 flank = cross(high, axis);
+    const auto spoke = [&](double turn)
+    {
+        const double angle = 2.0 * M_PI * turn / sides;
+        return high * std::cos(angle) + flank * std::sin(angle);
+    };
+
+    for (int k = 0; k < sides; ++k)
+    {
+        const Vec3 p = spoke(k + 0.5) * radius;
+        const Vec3 q = spoke(k + 1.5) * radius;
+        addQuad(from + p, to + p, to + q, from + q, side, spoke(k + 1.0));
+        addTriangle(from, from + p, from + q, end, -axis);
+        addTriangle(to, to + p, to + q, end, axis);
+    }
 }

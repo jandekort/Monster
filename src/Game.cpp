@@ -56,7 +56,8 @@ Game::Game(size_t opponents)
     , m_gridRow(5.5)
     , m_gridLane(2.5)
     , m_stuckDelay(6.0)
-    , m_detourShare(0.75)
+    , m_routeWindow(15)
+    , m_missedGrace(15.0)
     , m_dice(20261114u)
     , m_raceClock(0.0)
     , m_finishers(0)
@@ -117,8 +118,9 @@ void Game::resetRacer(Racer& racer)
     racer.m_crushShare = 0.0;
     racer.m_flattened = false;
     racer.m_stuckClock = 0.0;
-    racer.m_detour = false;
-    racer.m_routeLap = 0;
+    racer.m_detour = -1;
+    racer.m_routeChoice = -1;
+    racer.m_shaken = false;
     racer.m_finished = false;
     racer.m_finishPlace = 0;
     racer.m_finishTime = 0.0;
@@ -215,7 +217,9 @@ void Game::recover(Racer& racer)
         }
     }
     placeOnTrack(racer, target);
-    racer.m_detour = racer.m_driven; // a computer driver that came to grief goes round next time
+    racer.m_detour = -1;
+    racer.m_routeChoice = -1;
+    racer.m_shaken = racer.m_driven; // a computer driver that came to grief plays safe next time
 }
 
 void Game::step(double elapsed)
@@ -246,27 +250,45 @@ void Game::step(double elapsed)
     m_best = std::max(m_best, getScore());
 }
 
-// Before the bridge a computer driver decides, once a lap, between the dirt road and the jump.
-// Most of the time it takes the dirt road, which is slower: that is the player's chance to pass.
+// Coming up to each junction a computer driver decides, once a lap, between the circuit and the
+// dirt road. Before the bridge it mostly takes the dirt road, which is slower: that is the
+// player's chance to pass. One that has just come to grief takes the safe way, whichever that is.
 void Game::chooseRoute(Racer& racer)
 {
-    const size_t leave = m_terrain.getSlipLeave();
-    if (racer.m_progress >= m_terrain.getSlipRejoin())
+    const std::vector<Detour>& detours = m_terrain.getDetours();
+    for (size_t i = 0; i < detours.size(); ++i)
     {
-        racer.m_detour = false;
-    }
-    else if (racer.m_routeLap != racer.m_lap && racer.m_progress + 15 >= leave && racer.m_progress < leave)
-    {
-        m_dice = m_dice * 1664525u + 1013904223u;
-        racer.m_routeLap = racer.m_lap;
-        racer.m_detour = ((m_dice >> 8) & 0xFFFFu) / 65536.0 < m_detourShare;
+        const Detour& detour = detours[i];
+        const int choice = racer.m_lap * (int) detours.size() + (int) i;
+        if (racer.m_detour == (int) i && racer.m_progress >= detour.m_rejoin)
+        {
+            racer.m_detour = -1;
+        }
+        else if (racer.m_routeChoice != choice && racer.m_progress + m_routeWindow >= detour.m_leave
+            && racer.m_progress < detour.m_leave)
+        {
+            // The dice are only thrown where there is something to decide
+            bool drawn = detour.m_appeal >= 1.0;
+            if (detour.m_appeal > 0.0 && detour.m_appeal < 1.0)
+            {
+                m_dice = m_dice * 1664525u + 1013904223u;
+                drawn = ((m_dice >> 8) & 0xFFFFu) / 65536.0 < detour.m_appeal;
+            }
+            racer.m_routeChoice = choice;
+            racer.m_detour = (racer.m_shaken ? detour.m_cautious : drawn) ? (int) i : -1;
+            racer.m_shaken = racer.m_shaken && !detour.m_cautious;
+        }
     }
 }
 
-bool Game::onDetour(const Racer& racer) const
+const Detour* Game::detourOf(const Racer& racer) const
 {
-    return racer.m_detour && racer.m_progress + 2 >= m_terrain.getSlipLeave()
-        && racer.m_progress < m_terrain.getSlipRejoin();
+    if (racer.m_detour < 0)
+    {
+        return nullptr;
+    }
+    const Detour& detour = m_terrain.getDetours().at((size_t) racer.m_detour);
+    return racer.m_progress + 2 >= detour.m_leave && racer.m_progress < detour.m_rejoin ? &detour : nullptr;
 }
 
 // Trucks are not part of the ray cast world, so contact between them is settled here, pair by
@@ -287,8 +309,9 @@ void Game::stepRacer(Racer& racer)
     if (racer.m_driven)
     {
         chooseRoute(racer);
-        racer.m_controls = onDetour(racer)
-            ? racer.m_driver.follow(racer.m_truck, m_terrain.getDirtPath())
+        const Detour* detour = detourOf(racer);
+        racer.m_controls = detour != nullptr
+            ? racer.m_driver.follow(racer.m_truck, detour->m_path)
             : racer.m_driver.drive(racer.m_truck, racer.m_progress, m_terrain.getTrack());
     }
 
@@ -309,6 +332,7 @@ void Game::stepRacer(Racer& racer)
     const size_t progressBefore = racer.m_progress;
     const double crushBefore = m_terrain.getCrush();
     racer.m_truck.step(m_fixedStep, controls, m_terrain);
+    m_terrain.strike(racer.m_truck.getPosition());
 
     { // Whoever flattens the wreck scores for it
         const double crushAfter = m_terrain.getCrush();
@@ -338,7 +362,8 @@ void Game::updateStuck(Racer& racer, size_t progressBefore)
         return;
     }
     // On the dirt road the lap progress stands still until the main road is reached again
-    const bool moving = racer.m_progress != progressBefore || (onDetour(racer) && racer.m_truck.getSpeed() > 3.0);
+    const bool moving = racer.m_progress != progressBefore
+        || (detourOf(racer) != nullptr && racer.m_truck.getSpeed() > 3.0);
     racer.m_stuckClock = moving ? 0.0 : racer.m_stuckClock + m_fixedStep;
     if (racer.m_stuckClock > m_stuckDelay)
     {
@@ -422,13 +447,13 @@ void Game::updateProgress(Racer& racer)
         }
     }
 
-    { // The dirt road round the bridge counts: reaching its far end is reaching the road it rejoins
-        const size_t leave = m_terrain.getSlipLeave();
-        const size_t rejoin = m_terrain.getSlipRejoin();
-        if (racer.m_progress + m_gateWindow >= leave && racer.m_progress < rejoin
-            && length(m_terrain.getDirtPath().back() - racer.m_truck.getPosition()) < m_gateRadius)
+    // The dirt roads count: reaching the far end of one is reaching the road it rejoins
+    for (const Detour& detour : m_terrain.getDetours())
+    {
+        if (racer.m_progress + m_gateWindow >= detour.m_leave && racer.m_progress < detour.m_rejoin
+            && length(detour.m_path.back() - racer.m_truck.getPosition()) < m_gateRadius)
         {
-            racer.m_progress = rejoin;
+            racer.m_progress = detour.m_rejoin;
         }
     }
 
@@ -570,7 +595,7 @@ std::string Game::hudString() const
     {
         std::snprintf(message, sizeof(message), "LAP %.1f s", racer.m_lastLapTime);
     }
-    else if (racer.m_missedClock >= 0.0 && racer.m_missedClock < m_messageDuration)
+    else if (racer.m_missedClock >= 0.0 && racer.m_missedClock < m_messageDuration && m_raceClock >= m_missedGrace)
     {
         std::snprintf(message, sizeof(message), "LAP NOT COUNTED - CHECKPOINT MISSED");
     }

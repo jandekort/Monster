@@ -79,6 +79,7 @@ Truck::Truck()
     , m_brakeForce(9000.0)
     , m_reverseSpeed(12.0)
     , m_rollingDrag(40.0)
+    , m_wadeDrag(2500.0)
     , m_maxSteer(0.5)
     , m_steerRate(2.5)
     , m_steerFadeSpeed(15.0)
@@ -309,6 +310,7 @@ void Truck::wheelForces(double dt, const Controls& controls, Terrain& terrain, V
         Vec3 contact;
         int onWreck = -1;
         double traction = 1.0;
+        double speedLimit = 0.0;
         const double sweep = m_maxCompression + m_rayMargin;
         for (int k = 0; k < m_wheelSpokes; ++k)
         {
@@ -323,6 +325,7 @@ void Truck::wheelForces(double dt, const Controls& controls, Terrain& terrain, V
                 contact = hit.m_point;
                 onWreck = hit.m_wreck;
                 traction = hit.m_traction;
+                speedLimit = hit.m_speedLimit;
             }
         }
 
@@ -354,7 +357,15 @@ void Truck::wheelForces(double dt, const Controls& controls, Terrain& terrain, V
             rollSpeed = dot(velocity, along);
             const double slipSpeed = dot(velocity, across);
 
-            double drive = throttle * m_driveForce * traction * std::max(0.0, 1.0 - rollSpeed / m_setup.m_topSpeed);
+            // Water holds a wheel back: it drives up to the speed the water allows only, and
+            // whatever speed it arrives with above that is dragged off
+            const bool held = speedLimit > 0.0;
+            const double topSpeed = held ? std::min(m_setup.m_topSpeed, speedLimit) : m_setup.m_topSpeed;
+            double drive = throttle * m_driveForce * traction * std::max(0.0, 1.0 - rollSpeed / topSpeed);
+            if (held && std::fabs(rollSpeed) > topSpeed)
+            {
+                drive -= m_wadeDrag * (rollSpeed > 0.0 ? rollSpeed - topSpeed : rollSpeed + topSpeed);
+            }
             if (brake > 0.0)
             {
                 if (rollSpeed > 0.5)

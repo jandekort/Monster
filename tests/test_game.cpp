@@ -513,6 +513,247 @@ int main()
         check(game.getTruck().up().y > 0.9 && !game.isWrecked(), "with the truck still on its wheels");
     }
 
+    std::cout << "Bridge closed" << std::endl;
+    {
+        Game game(0);
+        const Terrain& terrain = game.getTerrain();
+        const std::vector<PathPoint>& points = terrain.getTrack().getPoints();
+        const Barrier& barrier = terrain.getBarrier();
+        const size_t leave = terrain.getSlipLeave();
+        size_t climb = leave;
+        while (points[climb].m_kind == PathPoint::Kind::Flat)
+        {
+            ++climb;
+        }
+        const double pastTheMouth = dot(barrier.m_position - points[leave].m_position, points[leave].m_forward);
+        const double beforeTheRamp = dot(points[climb].m_position - barrier.m_position, barrier.m_forward);
+        std::cout << "    " << pastTheMouth << " m beyond where the dirt road leaves, " << beforeTheRamp
+            << " m before the road starts to climb" << std::endl;
+        check(pastTheMouth > 15.0, "the barrier stands beyond the mouth of the dirt road");
+        check(beforeTheRamp > 2.0 && barrier.m_position.y < 1.0e-9, "and on level road, before the ramp to the bridge");
+        check(!barrier.m_broken, "it stands at the start");
+
+        // Round by the dirt road it is left alone
+        const Driver driver;
+        game.startAt(leave - 2);
+        for (double t = 0.0; t < 40.0 && game.getProgress() < terrain.getSlipRejoin(); t += 1.0 / 60.0)
+        {
+            game.setControls(driver.follow(game.getTruck(), terrain.getDirtPath()));
+            game.step(1.0 / 60.0);
+        }
+        check(game.getProgress() >= terrain.getSlipRejoin() && !barrier.m_broken,
+            "a truck that goes round by the dirt road leaves it standing");
+
+        // Straight on, and it goes down without holding the truck up
+        Pilot pilot;
+        game.startAt(leave);
+        double slowest = 99.0;
+        for (double t = 0.0; t < 8.0 && game.getProgress() < climb + 4; t += 1.0 / 60.0)
+        {
+            game.setControls(pilot.drive(game));
+            game.step(1.0 / 60.0);
+            slowest = t > 1.0 ? std::min(slowest, game.getTruck().getSpeed()) : slowest;
+        }
+        check(barrier.m_broken, "a truck that drives on to the bridge knocks it down");
+        check(game.getProgress() >= climb && slowest > 5.0, "and is not stopped by it");
+        game.reset();
+        check(!game.getTerrain().getBarrier().m_broken, "a new race stands it up again");
+    }
+
+    std::cout << "Shortcut through the riverbed" << std::endl;
+    {
+        Game game(0);
+        const Terrain& terrain = game.getTerrain();
+        const Track& track = terrain.getTrack();
+        const std::vector<PathPoint>& points = track.getPoints();
+        const Detour& shortcut = terrain.getShortcut();
+        const DirtRoad& bed = terrain.getRiverbed();
+        const Vec3& ford = terrain.getFord();
+        const size_t lastGate = track.getCheckpoints().back();
+        const Vec3 down(0.0, -1.0, 0.0);
+        const auto ground = [&](const Vec3& at)
+        {
+            Hit hit;
+            check(terrain.raycast(Vec3(at.x, 6.0, at.z), down, 20.0, hit), "there is ground to stand on");
+            return hit;
+        };
+
+        std::cout << "    lap " << track.getLength() << " m; last gate at " << points[lastGate].m_distance
+            << " m, shortcut from " << points[shortcut.m_leave].m_distance << " to "
+            << points[shortcut.m_rejoin].m_distance << " m" << std::endl;
+        check(track.getLength() > 1100.0, "the lap is longer than it was");
+        check(track.getLength() - points[lastGate].m_distance > 300.0, "with a long run home from the last gate");
+        const bool beyondTheWrecks = std::all_of(terrain.getWrecks().begin(), terrain.getWrecks().end(),
+            [&](const Wreck& wreck)
+            {
+                return dot(points[shortcut.m_leave].m_position - wreck.getPosition(), points[shortcut.m_leave].m_forward) > 5.0;
+            });
+        check(shortcut.m_leave > lastGate && beyondTheWrecks, "the shortcut leaves the road after the last gate and the wrecks");
+        check(shortcut.m_rejoin > shortcut.m_leave && shortcut.m_rejoin + 1 < points.size()
+            && track.getLength() - points[shortcut.m_rejoin].m_distance < 50.0,
+            "and comes back to it just before the start and finish line");
+        check(dot(shortcut.m_path[shortcut.m_path.size() / 2] - points[shortcut.m_leave].m_position,
+            points[shortcut.m_leave].m_cross) < -20.0, "it runs to the left of the road");
+
+        // The river
+        const double level = terrain.getWaterLevel();
+        const Vec3 right = -bed.m_forward; // of a truck driving the shortcut
+        const Hit floor = ground(ford + bed.m_cross * 5.0);
+        std::cout << "    floor at " << floor.m_point.y << " m, water at " << level << " m, held to "
+            << floor.m_speedLimit * 3.6 << " km/h in it" << std::endl;
+        check(level < -1.5, "the water lies well below the road, so there is a climb out of it");
+        check(level - floor.m_point.y > 0.7 && level - floor.m_point.y < 1.7, "it is about as deep as a wheel is high");
+        check(std::fabs(floor.m_speedLimit * 3.6 - 25.0) < 1.0e-6, "in the water a truck makes 25 km/h at most");
+        check(ground(ford - bed.m_cross * 30.0).m_speedLimit == 0.0, "and nothing holds it back on dry land");
+        check(std::fabs(ground(ford - bed.m_forward * 9.0).m_traction - 0.70) < 1.0e-9, "the floor of the river is gravel");
+        check(ground(ford - bed.m_cross * (bed.halfWidth() - 1.0)).m_point.y > level + 1.0
+            && std::fabs(ground(ford - bed.m_cross * (bed.halfWidth() - 1.0)).m_traction - 0.86) < 1.0e-9,
+            "the track goes down the bank to it as dirt");
+
+        // The bridge, looked at across its width a third of the way over the river
+        const Vec3 onTheTrack = *std::min_element(shortcut.m_path.begin(), shortcut.m_path.end(),
+            [&](const Vec3& a, const Vec3& b)
+            {
+                return length(a - (ford - bed.m_cross * 7.0)) < length(b - (ford - bed.m_cross * 7.0));
+            });
+        const Hit lane = ground(onTheTrack);
+        const Hit sunk = ground(onTheTrack - right * 4.0);
+        const Hit beside = ground(onTheTrack + right * 4.0);
+        double dryWidth = 0.0;
+        for (double side = -8.0; side < 8.0; side += 0.05)
+        {
+            const Hit hit = ground(onTheTrack + right * side);
+            dryWidth += hit.m_point.y > level ? 0.05 : 0.0;
+        }
+        std::cout << "    bridge: the lane at " << lane.m_point.y << " m, its sunken side at " << sunk.m_point.y
+            << " m, " << dryWidth << " m of it dry" << std::endl;
+        check(lane.m_point.y > level + 0.2 && lane.m_point.y < -0.5 && lane.m_speedLimit == 0.0,
+            "the track runs over the edge of the log bridge that is still above the water");
+        check(sunk.m_point.y < level - 0.2 && sunk.m_point.y > floor.m_point.y + 0.05 && sunk.m_speedLimit > 0.0,
+            "the other side of the bridge has sunk under water");
+        check(std::fabs(beside.m_point.y - floor.m_point.y) < 1.0e-6, "and to the right of it is open water");
+        check(dryWidth > 3.9 && dryWidth < 5.2, "the dry lane is little wider than a truck");
+        check(std::fabs(ground(ford + bed.m_cross * 2.0 + right * 1.0).m_point.y - floor.m_point.y) < 1.0e-6
+            && std::fabs(ground(ford + bed.m_cross * 6.0 - right * 3.0).m_point.y - floor.m_point.y) < 1.0e-6,
+            "the second half of the bridge has gone");
+
+        // Driven from the same spot: round by the road, and by the shortcut, slowing for the
+        // river or not, along the dry lane or over the sunken side of the bridge
+        const Driver driver;
+        Driver::Style precise; // looks a short way ahead, and so keeps closely to the line it is given
+        precise.m_lookAhead = 5.0;
+        const Driver steady(precise);
+        std::vector<Vec3> overTheSunkenSide = shortcut.m_path;
+        for (Vec3& point : overTheSunkenSide)
+        {
+            point = point - (bed.contains(point) ? right * 4.5 : Vec3());
+        }
+        struct Run
+        {
+            double m_time = 0.0;
+            double m_lowest = 9.0;
+            double m_firstWet = 99.0; // how far over the river the first wheel went under [m]
+            double m_wadeSpeed = 0.0; // fastest once it has been in the water a second [m/s]
+            double m_wadeTime = 0.0;  // with a wheel in the water [s]
+            bool m_arrived = false;
+            bool m_upright = true;
+        };
+        const auto run = [&](const std::vector<Vec3>* path, double riverPace, const Driver& who)
+        {
+            Game trial(0);
+            Pilot pilot;
+            Run result;
+            trial.startAt(shortcut.m_leave - 3);
+            for (; result.m_time < 90.0 && trial.getProgress() < shortcut.m_rejoin; result.m_time += 1.0 / 60.0)
+            {
+                const Truck& truck = trial.getTruck();
+                Controls controls = path != nullptr ? who.follow(truck, *path) : pilot.drive(trial);
+                if (riverPace > 0.0 && length(truck.getPosition() - ford) < bed.halfWidth() + 22.0
+                    && dot(truck.getPosition() - ford, bed.m_cross) < 0.0)
+                {
+                    controls.m_throttle = truck.getSpeed() < riverPace ? controls.m_throttle : 0.0;
+                    controls.m_brake = truck.getSpeed() > riverPace + 1.0 ? 1.0 : 0.0;
+                }
+                trial.setControls(controls);
+                trial.step(1.0 / 60.0);
+                const bool wading = std::any_of(truck.getWheels().begin(), truck.getWheels().end(),
+                    [&](const Wheel& wheel)
+                    {
+                        return wheel.m_onGround
+                            && terrain.isWading(wheel.m_center - Vec3(0.0, truck.getWheelRadius(), 0.0));
+                    });
+                if (wading && result.m_wadeTime == 0.0)
+                {
+                    result.m_firstWet = dot(truck.getPosition() - ford, bed.m_cross);
+                }
+                result.m_wadeTime += wading ? 1.0 / 60.0 : 0.0;
+                result.m_wadeSpeed = wading && result.m_wadeTime > 1.0
+                    ? std::max(result.m_wadeSpeed, truck.getSpeed()) : result.m_wadeSpeed;
+                result.m_lowest = std::min(result.m_lowest, truck.getPosition().y);
+                result.m_upright = result.m_upright && truck.up().y > 0.5 && !trial.isWrecked();
+            }
+            result.m_arrived = trial.getProgress() >= shortcut.m_rejoin;
+            return result;
+        };
+        const auto report = [](const char* name, const Run& result)
+        {
+            std::cout << "    " << name << ": " << result.m_time << " s, first wet " << result.m_firstWet
+                << " m from the middle of the river, " << result.m_wadeTime << " s in the water at up to "
+                << result.m_wadeSpeed * 3.6 << " km/h, lowest " << result.m_lowest << " m"
+                << (result.m_arrived ? "" : ", did not arrive") << (result.m_upright ? "" : ", went over") << std::endl;
+        };
+        const Run road = run(nullptr, 0.0, driver);
+        const Run careful = run(&shortcut.m_path, 7.0, steady);
+        const Run flatOut = run(&shortcut.m_path, 0.0, driver);
+        const Run sunkenSide = run(&overTheSunkenSide, 7.0, steady);
+        report("by the road", road);
+        report("the dry lane, slowing for the river", careful);
+        report("the dry lane, flat out", flatOut);
+        report("the sunken side, slowing for the river", sunkenSide);
+        check(road.m_arrived && careful.m_arrived && sunkenSide.m_arrived, "road and shortcut both lead back to the road before the line");
+        check(careful.m_upright && careful.m_firstWet > -7.5, "a truck that keeps to the dry lane stays dry most of the way over the bridge");
+        check(careful.m_wadeTime > 1.2, "but then it has to wade: the second half of the bridge has gone");
+        check(careful.m_wadeSpeed > 0.0 && careful.m_wadeSpeed < 25.0 / 3.6 + 0.7, "at no more than 25 km/h");
+        check(careful.m_lowest < -1.0, "and climb back out of the river to the road");
+        check(sunkenSide.m_upright && sunkenSide.m_firstWet < careful.m_firstWet - 3.0
+            && sunkenSide.m_wadeTime > careful.m_wadeTime + 0.8, "over the sunken side of the bridge it wades for longer");
+        check(sunkenSide.m_time > careful.m_time + 0.5, "which costs time");
+        check(careful.m_time < road.m_time, "taken with care the shortcut still beats the road");
+    }
+
+    std::cout << "No lap not counted at the start" << std::endl;
+    {
+        Game game(0);
+        Pilot pilot;
+        const size_t last = game.getTerrain().getTrack().getPoints().size() - 1;
+        bool announced = false;
+        for (double t = 0.0; t < 8.0; t += 1.0 / 60.0)
+        {
+            game.setControls(pilot.drive(game));
+            game.step(1.0 / 60.0);
+            announced = announced || game.hudString().find("NOT COUNTED") != std::string::npos;
+        }
+        check(game.getPlayer().m_missedClock >= 0.0 && game.getLap() == 1,
+            "crossing the line from the grid does not count as a lap");
+        check(!announced, "but nothing is said about it in the first seconds of the race");
+
+        // Later in the race the same thing is announced
+        for (double t = 0.0; t < 9.0; t += 1.0 / 60.0)
+        {
+            game.setControls(Controls());
+            game.step(1.0 / 60.0);
+        }
+        game.startAt(last - 14);
+        for (double t = 0.0; t < 8.0 && !announced; t += 1.0 / 60.0)
+        {
+            game.setControls(pilot.drive(game));
+            game.step(1.0 / 60.0);
+            announced = game.hudString().find("NOT COUNTED") != std::string::npos;
+        }
+        std::cout << "    announced " << game.getRaceTime() << " s into the race" << std::endl;
+        check(announced && game.getRaceTime() > 15.0, "a lap that does not count later on is announced");
+    }
+
     std::cout << "Tyre setups" << std::endl;
     {
         // All of this runs on empty ground well clear of the circuit: a turn circle started near
@@ -950,8 +1191,11 @@ int main()
         double deepest = 0.0;
         double lowestOnTheBridge = 9.0;
         const DirtRoad& cutting = race.getTerrain().getDirtRoad();
+        const DirtRoad& riverbed = race.getTerrain().getRiverbed();
         std::vector<int> byDirtRoad(racers.size(), 0);
+        std::vector<int> byShortcut(racers.size(), 0);
         std::vector<bool> inTheCutting(racers.size(), false);
+        std::vector<bool> inTheRiverbed(racers.size(), false);
         const std::vector<PathPoint>& where = race.getTerrain().getTrack().getPoints();
         bool lapsWereComplete = true;
         bool overWithThePlayer = true;
@@ -974,16 +1218,22 @@ int main()
                 }
                 gates[i] = racers[i].getCheckpointsPassed();
                 lowest = std::min(lowest, racers[i].m_truck.getPosition().y);
+                // Down in the cutting on purpose: a truck knocked into it off the road does not count
                 const bool sunk = cutting.contains(racers[i].m_truck.getPosition())
-                    && racers[i].m_truck.getPosition().y < 0.6;
+                    && racers[i].m_truck.getPosition().y < 0.6 && racers[i].m_detour == 0;
                 byDirtRoad[i] += sunk && !inTheCutting[i] ? 1 : 0;
                 inTheCutting[i] = sunk;
+                const bool fording = riverbed.contains(racers[i].m_truck.getPosition());
+                byShortcut[i] += fording && !inTheRiverbed[i] ? 1 : 0;
+                inTheRiverbed[i] = fording;
                 const PathPoint::Kind kind = where[racers[i].m_progress].m_kind;
                 if (kind == PathPoint::Kind::Bridge || kind == PathPoint::Kind::Gap)
                 {
                     lowestOnTheBridge = std::min(lowestOnTheBridge, racers[i].m_truck.getPosition().y);
                 }
-                for (size_t j = i + 1; j < racers.size(); ++j)
+                // While the race is on. Once the player has finished, the truck is parked on the
+                // road beyond the line, and the others arrive there at full speed.
+                for (size_t j = i + 1; j < racers.size() && !race.isRaceOver(); ++j)
                 {
                     deepest = std::max(deepest, Truck::overlap(racers[i].m_truck, racers[j].m_truck));
                 }
@@ -1021,7 +1271,11 @@ int main()
             << byDirtRoad[0] << std::endl;
         check(opponentsByDirt >= 5, "the opponents take the dirt road most of the time");
         check(opponentsByDirt < 9, "but not always");
-        check(deepest < 1.0, "trucks bump but do not drive through each other (a hard knock sinks them up to 0.75 m)");
+        const int opponentsByShortcut = byShortcut[1] + byShortcut[2] + byShortcut[3];
+        std::cout << "    through the riverbed: opponents " << opponentsByShortcut << " times out of 9, the player "
+            << byShortcut[0] << std::endl;
+        check(opponentsByShortcut == 0, "the opponents never take the shortcut");
+        check(deepest < 0.8, "trucks bump but do not drive through each other");
         check(overWithThePlayer && race.isRaceOver(), "the race is over when the player finishes");
         check(race.getPosition() == racers.front().m_finishPlace, "the player's position is the finishing place");
         check(finishedOff == 1 && wreckPoints >= 498 && wreckPoints <= 502,

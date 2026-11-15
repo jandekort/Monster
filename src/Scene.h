@@ -15,6 +15,8 @@ struct PathPoint;
 class Truck;
 class Wreck;
 
+struct Barrier;
+
 // Class ChaseCamera
 class ChaseCamera
 {
@@ -70,6 +72,10 @@ private:
         const unsigned char* rows, const Color& color);
     void plantTrees(const Terrain& terrain);
     void addWreck(const Wreck& wreck);
+    void addBarrier(const Barrier& barrier);
+    void addWater(const Terrain& terrain, double time);
+    void addRiverside(const Terrain& terrain, double time);
+    void addSpray(const Truck& truck, const Terrain& terrain, double time);
     void addScenery();
     void addTruck(const Truck& truck, const Color& paint);
     void addWheel(const Vec3& center, const Vec3& axle, const Vec3& up, double radius, double halfWidth, double spin);

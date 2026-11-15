@@ -25,6 +25,7 @@ struct PathPoint
     Vec3 m_normal;           // unit vector out of the road surface
     Kind m_kind = Kind::Flat;
     bool m_corner = false;   // true->part of a bend, false->straight
+    bool m_branch = false;   // true->the dirt road round the bridge leaves or joins along here
     double m_distance = 0.0; // along the centreline from the start line [m]
 };
 
@@ -81,6 +82,8 @@ private:
     size_t m_checkpointCount;
     double m_gateMargin;          // how far outside the road edge the poles stand [m]
     double m_gateClearance;       // level, straight road needed either side of a gate [m]
+    double m_homeRun;             // extra length of each of the last two straights; the gates
+                                  // are spread over the lap without it [m]
 
     // Cursor used while laying out the circuit
     Vec3 m_cursor;

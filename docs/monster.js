@@ -193,8 +193,7 @@
                 fields[0] + " km/h<br>LAP " + fields[4] + "/" + fields[15] + "&nbsp; " + fields[5] + " s" +
                 (Number(fields[6]) > 0.0 ? "<br>BEST LAP " + fields[6] + " s" : "") +
                 "<br>CHECKPOINT " + fields[7] + "/" + fields[8] +
-                "<br>TYRES " + fields[9] + " " + fields[10] +
-                "<br>grip " + fields[11] + " / top " + fields[12] + " km/h";
+                "<br>TYRES " + fields[9] + " " + fields[10];
             hud.score.innerHTML = "SCORE " + fields[1] + "<br>BEST " + fields[2];
             hud.message.textContent = fields[3] || "";
 

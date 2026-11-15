@@ -137,6 +137,7 @@ private:
     double m_brakeForce;     // per wheel [N]
     double m_reverseSpeed;
     double m_rollingDrag;    // per wheel [N s/m]
+    double m_wadeDrag;       // per wheel, on speed above what the water allows [N s/m]
     double m_maxSteer;
     double m_steerRate;
     double m_steerFadeSpeed; // speed at which the steering lock halves
