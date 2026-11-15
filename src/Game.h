@@ -70,6 +70,7 @@ private:
     void placeOnGrid(Racer& racer);
     void collideRacers();
     bool isAhead(const Racer& a, const Racer& b) const;
+    int gatesBehind(const Racer& racer) const; // gates cleared since the start, laps included
     void updateStuck(Racer& racer, size_t progressBefore);
     void chooseRoute(Racer& racer);
     const Detour* detourOf(const Racer& racer) const; // the dirt road a racer is on, or none

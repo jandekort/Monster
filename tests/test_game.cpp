@@ -658,7 +658,7 @@ int main()
             bool m_arrived = false;
             bool m_upright = true;
         };
-        const auto run = [&](const std::vector<Vec3>* path, double riverPace, const Driver& who)
+        const auto run = [&](const std::vector<Vec3>* path, double riverPace, const Driver& who, bool routeSpeeds = false)
         {
             Game trial(0);
             Pilot pilot;
@@ -667,7 +667,8 @@ int main()
             for (; result.m_time < 90.0 && trial.getProgress() < shortcut.m_rejoin; result.m_time += 1.0 / 60.0)
             {
                 const Truck& truck = trial.getTruck();
-                Controls controls = path != nullptr ? who.follow(truck, *path) : pilot.drive(trial);
+                Controls controls = path == nullptr ? pilot.drive(trial)
+                    : routeSpeeds ? who.follow(truck, *path, shortcut.m_speeds) : who.follow(truck, *path);
                 if (riverPace > 0.0 && length(truck.getPosition() - ford) < bed.halfWidth() + 22.0
                     && dot(truck.getPosition() - ford, bed.m_cross) < 0.0)
                 {
@@ -706,10 +707,12 @@ int main()
         const Run careful = run(&shortcut.m_path, 7.0, steady);
         const Run flatOut = run(&shortcut.m_path, 0.0, driver);
         const Run sunkenSide = run(&overTheSunkenSide, 7.0, steady);
+        const Run asDriven = run(&shortcut.m_path, 0.0, driver, true);
         report("by the road", road);
         report("the dry lane, slowing for the river", careful);
         report("the dry lane, flat out", flatOut);
         report("the sunken side, slowing for the river", sunkenSide);
+        report("as a computer driver takes it", asDriven);
         check(road.m_arrived && careful.m_arrived && sunkenSide.m_arrived, "road and shortcut both lead back to the road before the line");
         check(careful.m_upright && careful.m_firstWet > -7.5, "a truck that keeps to the dry lane stays dry most of the way over the bridge");
         check(careful.m_wadeTime > 1.2, "but then it has to wade: the second half of the bridge has gone");
@@ -719,6 +722,9 @@ int main()
             && sunkenSide.m_wadeTime > careful.m_wadeTime + 0.8, "over the sunken side of the bridge it wades for longer");
         check(sunkenSide.m_time > careful.m_time + 0.5, "which costs time");
         check(careful.m_time < road.m_time, "taken with care the shortcut still beats the road");
+        check(std::fabs(shortcut.m_appeal - 1.0 / 12.0) < 1.0e-12, "a computer driver takes the shortcut one time in twelve");
+        check(asDriven.m_arrived && asDriven.m_upright && asDriven.m_firstWet > -7.5 && asDriven.m_time < road.m_time,
+            "and then slows for the river, keeps to the dry lane, wades and gets there before it would by the road");
     }
 
     std::cout << "No lap not counted at the start" << std::endl;
@@ -1196,6 +1202,10 @@ int main()
         std::vector<int> byShortcut(racers.size(), 0);
         std::vector<bool> inTheCutting(racers.size(), false);
         std::vector<bool> inTheRiverbed(racers.size(), false);
+        const int gatesALap = race.getCheckpointCount() + 1; // the line counts as one
+        std::vector<int> tally(racers.size(), gatesALap);    // gates cleared since the start, laps included
+        int placesChecked = 0;
+        bool placedRightAtGates = true;
         const std::vector<PathPoint>& where = race.getTerrain().getTrack().getPoints();
         bool lapsWereComplete = true;
         bool overWithThePlayer = true;
@@ -1238,6 +1248,25 @@ int main()
                     deepest = std::max(deepest, Truck::overlap(racers[i].m_truck, racers[j].m_truck));
                 }
             }
+            // Whenever a truck clears a gate or the line, its place is one behind everyone who
+            // was through there before it
+            for (size_t i = 0; i < racers.size(); ++i)
+            {
+                const int now = racers[i].m_lap * gatesALap + racers[i].getCheckpointsPassed();
+                if (now > tally[i] && !racers[i].m_finished)
+                {
+                    const auto sooner = [&](const Racer& other)
+                    {
+                        const int theirs = other.m_lap * gatesALap + other.getCheckpointsPassed();
+                        return &other != &racers[i]
+                            && (theirs > now || (theirs == now && other.m_gateClock < racers[i].m_gateClock));
+                    };
+                    const int expected = 1 + (int) std::count_if(racers.begin(), racers.end(), sooner);
+                    placedRightAtGates = placedRightAtGates && race.getPosition(racers[i]) == expected;
+                    ++placesChecked;
+                }
+                tally[i] = now;
+            }
             overWithThePlayer = overWithThePlayer && race.isRaceOver() == racers.front().m_finished;
         }
 
@@ -1274,7 +1303,9 @@ int main()
         const int opponentsByShortcut = byShortcut[1] + byShortcut[2] + byShortcut[3];
         std::cout << "    through the riverbed: opponents " << opponentsByShortcut << " times out of 9, the player "
             << byShortcut[0] << std::endl;
-        check(opponentsByShortcut == 0, "the opponents never take the shortcut");
+        check(opponentsByShortcut <= 3, "the opponents seldom take the shortcut");
+        std::cout << "    places checked at " << placesChecked << " gates and line crossings" << std::endl;
+        check(placesChecked > 40 && placedRightAtGates, "at every gate a truck's place is right: behind all that were through it sooner");
         check(deepest < 0.8, "trucks bump but do not drive through each other");
         check(overWithThePlayer && race.isRaceOver(), "the race is over when the player finishes");
         check(race.getPosition() == racers.front().m_finishPlace, "the player's position is the finishing place");

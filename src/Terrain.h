@@ -129,6 +129,8 @@ struct DirtRoad
 struct Detour
 {
     std::vector<Vec3> m_path; // centreline, road to road
+    std::vector<double> m_speeds; // the most a computer driver does at each point of the path [m/s],
+                              // 0->as it likes; empty->the route sets no speeds
     size_t m_leave = 0;       // track point where it leaves the main road
     size_t m_rejoin = 0;      // and the one where it comes back
     double m_appeal = 0.0;    // share of the laps on which a computer driver takes it
@@ -247,6 +249,8 @@ private:
     double m_dipRun;         // at its broken end the deck dips under water over this distance [m]
     double m_dipDepth;       // and ends this far under [m]
     double m_laneWidth;      // the track is laid this far in from the right hand edge, a truck's width [m]
+    double m_cautionRun;     // a computer driver slows down this far before the river [m]
+    double m_cautionSpeed;   // and keeps to this speed until it is in the water [m/s]
     double m_barrierLeadIn;  // the barrier stands this far before the bridge starts to climb [m]
     double m_barrierClear;   // and at least this far beyond where the dirt road leaves [m]
     double m_barrierReach;   // a truck this near the barrier along the road is driving through it [m]

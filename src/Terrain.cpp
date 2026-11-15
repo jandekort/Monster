@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iterator>
 #include <numeric>
 
 // Struct Face
@@ -151,7 +152,7 @@ Terrain::Terrain()
     , m_slipSplay(0.45)
     , m_groundSlack(1.0e-4)
     , m_bypassAppeal(0.75)
-    , m_shortcutAppeal(0.0) // the computer drivers keep to the road
+    , m_shortcutAppeal(1.0 / 12.0)
     , m_shortcutLeadIn(10.0)
     , m_shortcutRunIn(34.0)
     , m_shortcutSweep(40.0)
@@ -168,6 +169,8 @@ Terrain::Terrain()
     , m_dipRun(4.0)
     , m_dipDepth(0.5)
     , m_laneWidth(4.5)
+    , m_cautionRun(22.0)
+    , m_cautionSpeed(7.0)
     , m_barrierLeadIn(6.0)
     , m_barrierClear(18.0)
     , m_barrierReach(2.5)
@@ -436,6 +439,18 @@ void Terrain::buildShortcut()
     buildSlipRoad(detour.m_path, farBank, m_riverbed.m_cross,
         rejoin.m_position - rejoin.m_cross * aside, turnIn, 1, rejoin, -1.0);
     buildLogBridge();
+
+    // The bridge is no place to arrive at speed: from a little before the river to the middle of
+    // it, where the bridge ends, the route sets a speed
+    detour.m_speeds.reserve(detour.m_path.size());
+    std::transform(detour.m_path.begin(), detour.m_path.end(), std::back_inserter(detour.m_speeds),
+        [&](const Vec3& point)
+        {
+            const Vec3 offset = point - m_ford;
+            const bool care = dot(offset, m_riverbed.m_cross) < 0.0
+                && std::hypot(offset.x, offset.z) < m_riverbed.halfWidth() + m_cautionRun;
+            return care ? m_cautionSpeed : 0.0;
+        });
     m_detours.push_back(detour);
 }
 

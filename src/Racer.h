@@ -67,6 +67,7 @@ struct Racer
     int m_detour;             // which dirt road is being taken, negative->keeping to the circuit
     int m_routeChoice;        // the last choice of route made, so that each is made once
     bool m_shaken;            // true->came to grief, and plays safe at the next choices
+    double m_gateClock;       // race time at which the last gate was cleared or lap credited [s]
 
     // Messages and stunts
     double m_lapClock;        // seconds since the last lap was finished, negative->none yet

@@ -21,6 +21,7 @@ public:
         double m_planDistance = 80.0; // how far ahead bends and the loop are considered [m]
         double m_throttleCap = 1.0;   // most throttle used, except on the run into the loop
         double m_detourPace = 1.3;    // speed kept on the dirt road, as a multiple of m_cornerSpeed
+        double m_carefulLookAhead = 5.0; // steering target distance where the route calls for care [m]
     };
 
     Driver();
@@ -31,6 +32,10 @@ public:
 
     // Along a route that is not the circuit itself, such as the dirt road round the bridge
     Controls follow(const Truck& truck, const std::vector<Vec3>& path) const;
+
+    // The same, on a route that sets a speed for some of its points: speeds[i] is the most to do
+    // at path[i] in m/s, 0->as fast as the driver likes. There the driver also keeps closer to the line.
+    Controls follow(const Truck& truck, const std::vector<Vec3>& path, const std::vector<double>& speeds) const;
 
     // Accessor
     const Style& getStyle() const { return m_style; }

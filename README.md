@@ -12,6 +12,11 @@ staggered grid behind the start line with the player at the back. The HUD shows
 the player's position in the field and the lap out of three. The race ends when
 the player finishes; R restarts it from the grid.
 
+The position is settled at every gate and at the line: a truck that clears one
+is placed behind exactly those that were through it sooner. Between gates the
+trucks level on gates are ranked by how far round the lap they are, which is
+only an estimate while one of them is on a dirt road.
+
 The opponents drive by the same rules as the player: they clear the same gates
 to be credited a lap, they are set upright again after a crash, and one that
 stops making progress for six seconds is put back at its last gate. Trucks bump
@@ -70,8 +75,9 @@ half of the bridge has gone, so from the middle of the river a truck has to
 wade. Wheels on the sunken side of the bridge are in the water and are held
 back like any others. Taken with care the shortcut saves about four seconds
 over the road; taken flat out it usually ends on the roof. The piles, ropes,
-reeds, rocks and floating logs are scenery and do not stop a truck. The
-computer drivers never take this shortcut.
+reeds, rocks and floating logs are scenery and do not stop a truck. A computer
+driver takes this shortcut on one lap in twelve: it slows to 25 km/h before the
+river, keeps to the dry lane and wades the rest.
 
 The going differs by surface. The road and the bridge are quickest, the dirt
 roads and the logs a little slower, the gravel of the riverbed slower again,

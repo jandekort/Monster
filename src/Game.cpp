@@ -121,6 +121,7 @@ void Game::resetRacer(Racer& racer)
     racer.m_detour = -1;
     racer.m_routeChoice = -1;
     racer.m_shaken = false;
+    racer.m_gateClock = 0.0;
     racer.m_finished = false;
     racer.m_finishPlace = 0;
     racer.m_finishTime = 0.0;
@@ -311,7 +312,7 @@ void Game::stepRacer(Racer& racer)
         chooseRoute(racer);
         const Detour* detour = detourOf(racer);
         racer.m_controls = detour != nullptr
-            ? racer.m_driver.follow(racer.m_truck, detour->m_path)
+            ? racer.m_driver.follow(racer.m_truck, detour->m_path, detour->m_speeds)
             : racer.m_driver.drive(racer.m_truck, racer.m_progress, m_terrain.getTrack());
     }
 
@@ -417,6 +418,7 @@ void Game::updateCheckpoints(Racer& racer)
         else if (crossing == Racer::Crossing::Approached && along > m_gateDepth)
         {
             crossing = Racer::Crossing::Cleared;
+            racer.m_gateClock = m_raceClock;
         }
     }
 }
@@ -479,6 +481,7 @@ void Game::updateProgress(Racer& racer)
                 ? racer.m_lapTime : std::min(racer.m_bestLapTime, racer.m_lapTime);
             racer.m_lapClock = 0.0;
             ++racer.m_lap;
+            racer.m_gateClock = m_raceClock;
             if (racer.m_lap > m_raceLaps && !racer.m_finished)
             {
                 racer.m_finished = true;
@@ -534,18 +537,35 @@ int Game::getScore(const Racer& racer) const
     return racer.getScore() + getCrushPoints(racer);
 }
 
-// Finishers lead in the order they finished. The rest are ranked by laps and then by how far
-// round the lap they are; on the grid, where nobody has got anywhere, by grid slot.
+// A gate cleared is one gate, and a lap credited is the gates of a lap and one for the line
+int Game::gatesBehind(const Racer& racer) const
+{
+    return racer.m_lap * (getCheckpointCount() + 1) + racer.getCheckpointsPassed();
+}
+
+// Finishers lead in the order they finished. The rest are ranked first by the gates they have
+// cleared, the line included: that is certain, so the order is right whenever a truck goes
+// through a gate. Between gates they are ranked by how far round the lap they are, which stands
+// still on a dirt road; then by who cleared the last gate first; and on the grid, where nobody
+// has got anywhere, by grid slot.
 bool Game::isAhead(const Racer& a, const Racer& b) const
 {
     if (a.m_finished || b.m_finished)
     {
         return a.m_finished && (!b.m_finished || a.m_finishPlace < b.m_finishPlace);
     }
+    if (gatesBehind(a) != gatesBehind(b))
+    {
+        return gatesBehind(a) > gatesBehind(b);
+    }
     const size_t lapPoints = m_terrain.getTrack().getPoints().size();
     const size_t ground = a.m_lap * lapPoints + a.m_progress;
     const size_t rival = b.m_lap * lapPoints + b.m_progress;
-    return ground != rival ? ground > rival : a.m_gridSlot < b.m_gridSlot;
+    if (ground != rival)
+    {
+        return ground > rival;
+    }
+    return a.m_gateClock != b.m_gateClock ? a.m_gateClock < b.m_gateClock : a.m_gridSlot < b.m_gridSlot;
 }
 
 int Game::getPosition(const Racer& racer) const

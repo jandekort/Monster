@@ -26,7 +26,13 @@ Driver::Driver(const Style& style)
 
 Controls Driver::follow(const Truck& truck, const std::vector<Vec3>& path) const
 {
+    return follow(truck, path, std::vector<double>());
+}
+
+Controls Driver::follow(const Truck& truck, const std::vector<Vec3>& path, const std::vector<double>& speeds) const
+{
     require(!path.empty(), "Driver::follow: nothing to follow");
+    require(speeds.empty() || speeds.size() == path.size(), "Driver::follow: one speed for every point of the path");
     const Vec3& position = truck.getPosition();
     const auto flatDistance = [&](const Vec3& point)
     {
@@ -41,8 +47,10 @@ Controls Driver::follow(const Truck& truck, const std::vector<Vec3>& path) const
             nearest = i;
         }
     }
+    const double set = speeds.empty() ? 0.0 : speeds[nearest];
+    const double lookAhead = set > 0.0 ? std::min(m_style.m_lookAhead, m_style.m_carefulLookAhead) : m_style.m_lookAhead;
     size_t target = nearest;
-    while (target + 1 < path.size() && flatDistance(path[target]) < m_style.m_lookAhead)
+    while (target + 1 < path.size() && flatDistance(path[target]) < lookAhead)
     {
         ++target;
     }
@@ -50,7 +58,8 @@ Controls Driver::follow(const Truck& truck, const std::vector<Vec3>& path) const
     Controls controls;
     const Vec3 to = path[target] - position;
     controls.m_steer = clamp(m_style.m_steerGain * std::atan2(dot(to, truck.right()), dot(to, truck.forward())), -1.0, 1.0);
-    const double limit = m_style.m_detourPace * m_style.m_cornerSpeed;
+    const double pace = m_style.m_detourPace * m_style.m_cornerSpeed;
+    const double limit = set > 0.0 ? std::min(set, pace) : pace;
     controls.m_throttle = truck.getSpeed() < limit ? 1.0 : 0.0;
     controls.m_brake = truck.getSpeed() > limit + 1.0 ? 1.0 : 0.0;
     return controls;
