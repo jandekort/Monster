@@ -575,18 +575,18 @@ int Game::getPosition(const Racer& racer) const
 }
 
 // A racer's place is settled when it clears a gate or the line, and stands until the next one:
-// it is then behind everyone who has cleared more gates, or as many sooner. A change of place
-// is announced, but not in the first seconds of the race, when the field is still sorting itself out.
+// it is then behind everyone who has cleared more gates, or as many sooner. The place is
+// announced each time, but not in the first seconds of the race, when the field is still sorting
+// itself out.
 void Game::settlePlace(Racer& racer, int gate)
 {
-    const int place = 1 + (int) std::count_if(m_racers.begin(), m_racers.end(),
+    racer.m_place = 1 + (int) std::count_if(m_racers.begin(), m_racers.end(),
         [&](const Racer& other) { return &other != &racer && isAhead(other, racer); });
-    if (place != racer.m_place && m_raceClock >= m_placeGrace)
+    if (m_raceClock >= m_placeGrace)
     {
         racer.m_placeClock = 0.0;
         racer.m_placeGate = gate;
     }
-    racer.m_place = place;
 }
 
 std::string Game::hudString() const
@@ -595,13 +595,9 @@ std::string Game::hudString() const
     const Judge& judge = racer.m_judge;
 
     char message[96] = "";
+    const bool placeNews = racer.m_placeClock >= 0.0 && racer.m_placeClock < m_messageDuration;
     char place[32] = "";
-    if (racer.m_placeClock >= 0.0 && racer.m_placeClock < m_messageDuration)
-    {
-        std::snprintf(place, sizeof(place), ". POSITION %d/%d", racer.m_place, (int) m_racers.size());
-    }
-    const bool placeNews = place[0] != 0;
-    const char* lineNews = placeNews && racer.m_placeGate == 0 ? place : "";
+    std::snprintf(place, sizeof(place), ". POSITION %d/%d", racer.m_place, (int) m_racers.size());
     if (racer.m_finished)
     {
         std::snprintf(message, sizeof(message), "FINISHED P%d/%d - PRESS R TO RACE AGAIN",
@@ -615,9 +611,21 @@ std::string Game::hudString() const
     {
         std::snprintf(message, sizeof(message), "AIR %.1f s", judge.getAirTime());
     }
-    else if (placeNews && racer.m_placeGate > 0)
+    else if (placeNews)
     {
-        std::snprintf(message, sizeof(message), "CHECKPOINT %d%s", racer.m_placeGate, place);
+        // At the line the place goes with the verdict on the lap
+        if (racer.m_placeGate > 0)
+        {
+            std::snprintf(message, sizeof(message), "CHECKPOINT %d%s", racer.m_placeGate, place);
+        }
+        else if (racer.m_lapClock >= 0.0 && racer.m_lapClock < m_messageDuration)
+        {
+            std::snprintf(message, sizeof(message), "LAP %.1f s%s", racer.m_lastLapTime, place);
+        }
+        else
+        {
+            std::snprintf(message, sizeof(message), "LAP NOT COUNTED - CHECKPOINT MISSED%s", place);
+        }
     }
     else if (judge.getLastRating() != Judge::Rating::None && judge.getMessageClock() < m_messageDuration)
     {
@@ -639,11 +647,11 @@ std::string Game::hudString() const
     }
     else if (racer.m_lapClock >= 0.0 && racer.m_lapClock < m_messageDuration)
     {
-        std::snprintf(message, sizeof(message), "LAP %.1f s%s", racer.m_lastLapTime, lineNews);
+        std::snprintf(message, sizeof(message), "LAP %.1f s", racer.m_lastLapTime);
     }
     else if (racer.m_missedClock >= 0.0 && racer.m_missedClock < m_messageDuration && m_raceClock >= m_missedGrace)
     {
-        std::snprintf(message, sizeof(message), "LAP NOT COUNTED - CHECKPOINT MISSED%s", lineNews);
+        std::snprintf(message, sizeof(message), "LAP NOT COUNTED - CHECKPOINT MISSED");
     }
     else if (m_crushClock >= 0.0 && m_crushClock < m_messageDuration && getCrushPoints(racer) > 0)
     {

@@ -108,7 +108,7 @@ private:
     double m_stuckDelay;      // a computer driver making no progress this long is recovered [s]
     size_t m_routeWindow;     // track points before a junction over which the route is chosen
     double m_missedGrace;     // a lap that does not count is not announced this early in the race [s]
-    double m_placeGrace;      // nor is a change of place [s]
+    double m_placeGrace;      // nor is the place at a gate or the line [s]
     unsigned m_dice;          // state of the generator the route choices are drawn from
 
     double m_raceClock;       // seconds since the start

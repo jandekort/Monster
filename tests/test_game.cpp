@@ -1273,10 +1273,10 @@ int main()
                     ++placesChecked;
                 }
                 // The place changes only as the truck itself clears a gate or the line, and the
-                // player is told of a change, unless it is too early in the race or in the air
+                // player is told it there, unless it is too early in the race or in the air
                 const int place = race.getPosition(racers[i]);
                 placeOnlyAtGates = placeOnlyAtGates && (now != tally[i] || place == shown[i]);
-                if (i == 0 && now > tally[i] && place != shown[i] && !racers[i].m_finished)
+                if (i == 0 && now > tally[i] && !racers[i].m_finished)
                 {
                     const bool told = race.hudString().find("POSITION") != std::string::npos;
                     const bool hidden = racers[i].m_judge.isAirborne() || racers[i].m_wrecked;
@@ -1328,10 +1328,10 @@ int main()
         check(opponentsByShortcut <= 3, "the opponents seldom take the shortcut");
         std::cout << "    places checked at " << placesChecked << " gates and line crossings" << std::endl;
         check(placesChecked > 40 && placedRightAtGates, "at every gate a truck's place is right: behind all that were through it sooner");
-        std::cout << "    the player was told of " << announcements << " changes of place" << std::endl;
+        std::cout << "    the player was told the place " << announcements << " times" << std::endl;
         check(placeOnlyAtGates, "a truck's place changes only as it clears a gate or the line");
-        check(quietAtStart && announcements > 0 && announcedAtGates,
-            "a change of place is announced at the gate, but not in the first 15 s");
+        check(quietAtStart && announcements >= 10 && announcedAtGates,
+            "the place is announced at every gate and the line, but not in the first 15 s");
         check(deepest < 0.8, "trucks bump but do not drive through each other");
         check(overWithThePlayer && race.isRaceOver(), "the race is over when the player finishes");
         check(race.getPosition() == racers.front().m_finishPlace, "the player's position is the finishing place");

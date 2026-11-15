@@ -68,6 +68,23 @@ private:
         bool m_wired; // true->the wires run on to the next pole
     };
 
+    // Struct Bend: a bend of the circuit, by its track points
+    struct Bend
+    {
+        size_t m_start;
+        size_t m_end;
+        int m_outside; // side of the outside, in units of the track points' m_cross
+        bool m_quiet;  // true->no gate, junction, wreck, barrier or stunt near
+    };
+
+    // Struct Sign: a board of arrows on the outside of a bend
+    struct Sign
+    {
+        Vec3 m_foot;
+        Vec3 m_face;  // level unit vector out of the board, towards the traffic coming up to it
+        Vec3 m_arrow; // level unit vector along the board, the way the arrows point
+    };
+
     void addGround(const Terrain& terrain, const Vec3& eye);
     void addFaces(const Terrain& terrain);
     void addMarkings(const Terrain& terrain);
@@ -79,7 +96,11 @@ private:
     void addGlyph(const Vec3& center, const Vec3& right, const Vec3& up, double pixel,
         const unsigned char* rows, const Color& color);
     void plantTrees(const Terrain& terrain);
+    std::vector<Bend> findBends(const Terrain& terrain) const;
+    bool siteIsClear(const Terrain& terrain, const Vec3& foot, double at, double reach) const;
     void raisePoles(const Terrain& terrain);
+    void placeSigns(const Terrain& terrain);
+    void addSigns();
     void addPoles();
     void addWire(const Vec3& from, const Vec3& to, const Color& color);
     void addWreck(const Wreck& wreck);
@@ -116,4 +137,8 @@ private:
     double m_wireSag;       // drop of a wire halfway between poles [m]
     double m_wireRadius;
     std::vector<Pole> m_poles;
+    double m_signOffset;    // a sign stands this far beyond the edge of the road [m]
+    double m_signLead;      // and faces the road this far before it [m]
+    int m_signsPerBend;
+    std::vector<Sign> m_signs;
 };

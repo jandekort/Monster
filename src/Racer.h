@@ -73,7 +73,7 @@ struct Racer
     // Messages and stunts
     double m_lapClock;        // seconds since the last lap was finished, negative->none yet
     double m_missedClock;     // seconds since a lap was rejected, negative->none yet
-    double m_placeClock;      // seconds since a change of place was announced, negative->none yet
+    double m_placeClock;      // seconds since the place was last announced, negative->not yet
     int m_placeGate;          // the gate it was announced at, 0->the line
     bool m_loopDone;          // true->loop already scored this lap
     bool m_ahead;             // true->truck is beyond the start/finish line

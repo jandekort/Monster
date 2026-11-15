@@ -14,9 +14,9 @@ the player finishes; R restarts it from the grid.
 
 The position is settled at every gate and at the line, and only there: a truck
 that clears one is placed behind those that have cleared more gates, or as many
-sooner, and keeps that place until its next gate. When the player's place
-changes the HUD says so for a moment (CHECKPOINT 2. POSITION 3/4), though not in
-the first 15 seconds.
+sooner, and keeps that place until its next gate. Each time the player clears a
+gate the HUD shows the place for a moment (CHECKPOINT 2. POSITION 3/4; at the
+line it goes with the lap time), though not in the first 15 seconds.
 
 The opponents drive by the same rules as the player: they clear the same gates
 to be credited a lap, they are set upright again after a crash, and one that
@@ -163,7 +163,8 @@ matrix each frame; `web/monster.js` only uploads and draws them.
 Collision is done with ray casts against the road faces, so surfaces can be
 stacked (bridge over road) or upside down (loop). Each wheel casts a fan of
 rays along the suspension axis; chassis and roof points are tested with rays
-from the centre of mass. Trees, mountains and the wooden telephone poles along the quiet bends are scenery without collision.
+from the centre of mass. Trees, mountains, the wooden telephone poles along the quiet bends and the
+arrow boards on the other bends are scenery without collision.
 
 Trucks are not in the ray cast world. Each carries a hull of six spheres, and
 where the hulls of two trucks overlap they are pushed apart by a spring and a

@@ -163,6 +163,10 @@ Scene::Scene()
     , m_wireSag(0.35)
     , m_wireRadius(0.025)
     , m_poles()
+    , m_signOffset(2.5)
+    , m_signLead(25.0)
+    , m_signsPerBend(3)
+    , m_signs()
 {
 }
 
@@ -184,9 +188,11 @@ void Scene::build(const Game& game, const Vec3& eye)
     {
         plantTrees(game.getTerrain());
         raisePoles(game.getTerrain());
+        placeSigns(game.getTerrain());
         m_planted = true;
     }
     addPoles();
+    addSigns();
     addScenery();
     for (const Racer& racer : game.getRacers())
     {
@@ -550,11 +556,8 @@ void Scene::plantTrees(const Terrain& terrain)
     }
 }
 
-// Telephone lines follow the outside of the quiet bends, those with no gate, junction, wreck,
-// barrier or stunt near, and run on along the road either side. A pole goes in every
-// m_poleSpacing, unless it would stand by a gate, on another part of the circuit, by a dirt road
-// or in a hole; there the wires break off.
-void Scene::raisePoles(const Terrain& terrain)
+// The bends of the circuit. A quiet one has no gate, junction, wreck, barrier or stunt near.
+std::vector<Scene::Bend> Scene::findBends(const Terrain& terrain) const
 {
     const Track& track = terrain.getTrack();
     const std::vector<PathPoint>& points = track.getPoints();
@@ -581,9 +584,7 @@ void Scene::raisePoles(const Terrain& terrain)
         [](const Wreck& wreck) { return wreck.getPosition(); });
     sights.push_back(terrain.getBarrier().m_position);
 
-    // The side a line runs on, in units of m_cross: the outside of its bend, 0->no line.
-    // Where the lines of two bends that turn opposite ways meet, the line stops.
-    std::vector<int> side(points.size(), 0);
+    std::vector<Bend> bends;
     for (size_t start = 0; start < points.size(); )
     {
         size_t end = start;
@@ -591,56 +592,83 @@ void Scene::raisePoles(const Terrain& terrain)
         {
             ++end;
         }
-        const double from = points[start].m_distance;
-        const double to = points[end].m_distance;
-        const bool quiet = std::none_of(busy.begin(), busy.end(),
-            [&](double at) { return at > from - m_quietRun && at < to + m_quietRun; })
-            && std::all_of(points.begin() + start, points.begin() + end + 1,
-            [&](const PathPoint& point)
-            {
-                return std::all_of(sights.begin(), sights.end(),
-                    [&](const Vec3& sight) { return levelDistance(sight, point.m_position) > m_quietRun; });
-            });
-        if (points[start].m_corner && quiet)
+        if (points[start].m_corner)
         {
+            const double from = points[start].m_distance;
+            const double to = points[end].m_distance;
+            const bool quiet = std::none_of(busy.begin(), busy.end(),
+                [&](double at) { return at > from - m_quietRun && at < to + m_quietRun; })
+                && std::all_of(points.begin() + start, points.begin() + end + 1,
+                [&](const PathPoint& point)
+                {
+                    return std::all_of(sights.begin(), sights.end(),
+                        [&](const Vec3& sight) { return levelDistance(sight, point.m_position) > m_quietRun; });
+                });
             const Vec3 turn = points[end].m_forward - points[start].m_forward;
             const int outside = dot(turn, points[(start + end) / 2].m_cross) > 0.0 ? -1 : 1;
-            for (size_t i = 0; i < points.size(); ++i)
-            {
-                const double at = points[i].m_distance;
-                if (at > from - m_lineRun && at < to + m_lineRun && points[i].m_kind == PathPoint::Kind::Flat)
-                {
-                    side[i] = side[i] == 0 || side[i] == outside ? outside : 0;
-                }
-            }
+            bends.push_back(Bend{ start, end, outside, quiet });
         }
         start = end + 1;
     }
+    return bends;
+}
+
+// Room for a pole or a sign reach from the centre of the road at this distance along the lap:
+// not on another part of the circuit, by a gate, by a dirt road or in a hole
+bool Scene::siteIsClear(const Terrain& terrain, const Vec3& foot, double at, double reach) const
+{
+    const Track& track = terrain.getTrack();
+    const std::vector<PathPoint>& points = track.getPoints();
+    const double lap = track.getLength();
+    const bool offTheCircuit = std::all_of(points.begin(), points.end(),
+        [&](const PathPoint& point)
+        {
+            const double along = std::fabs(point.m_distance - at);
+            return std::min(along, lap - along) < 2.0 * reach
+                || levelDistance(point.m_position, foot) > reach - 1.0;
+        });
+    const bool byNoGate = std::all_of(track.getCheckpoints().begin(), track.getCheckpoints().end(),
+        [&](size_t gate) { return levelDistance(points[gate].m_position, foot) > 2.0 * reach; })
+        && levelDistance(track.getStartFinish().m_position, foot) > 2.0 * reach;
+    const bool offTheDirt = std::all_of(terrain.getDetours().begin(), terrain.getDetours().end(),
+        [&](const Detour& detour)
+        {
+            return std::all_of(detour.m_path.begin(), detour.m_path.end(),
+                [&](const Vec3& point) { return levelDistance(point, foot) > reach; });
+        });
+    return offTheCircuit && byNoGate && offTheDirt
+        && !besideSunk(terrain.getDirtRoad(), foot) && !besideSunk(terrain.getRiverbed(), foot);
+}
+
+// Telephone lines follow the outside of the quiet bends and run on along the road either side.
+// A pole goes in every m_poleSpacing where the site is clear; where it is not the wires break off.
+void Scene::raisePoles(const Terrain& terrain)
+{
+    const Track& track = terrain.getTrack();
+    const std::vector<PathPoint>& points = track.getPoints();
+
+    // The side a line runs on, in units of m_cross, 0->no line. Where the lines of two bends that
+    // turn opposite ways meet, the line stops.
+    std::vector<int> side(points.size(), 0);
+    for (const Bend& bend : findBends(terrain))
+    {
+        if (!bend.m_quiet)
+        {
+            continue;
+        }
+        const double from = points[bend.m_start].m_distance - m_lineRun;
+        const double to = points[bend.m_end].m_distance + m_lineRun;
+        for (size_t i = 0; i < points.size(); ++i)
+        {
+            const double at = points[i].m_distance;
+            if (at > from && at < to && points[i].m_kind == PathPoint::Kind::Flat)
+            {
+                side[i] = side[i] == 0 || side[i] == bend.m_outside ? bend.m_outside : 0;
+            }
+        }
+    }
 
     const double reach = track.getHalfWidth() + m_poleOffset;
-    const double lap = track.getLength();
-    const auto siteIsClear = [&](const Vec3& foot, double at)
-    {
-        const bool offTheCircuit = std::all_of(points.begin(), points.end(),
-            [&](const PathPoint& point)
-            {
-                const double along = std::fabs(point.m_distance - at);
-                return std::min(along, lap - along) < 2.0 * reach
-                    || levelDistance(point.m_position, foot) > reach - 1.0;
-            });
-        const bool byNoGate = std::all_of(track.getCheckpoints().begin(), track.getCheckpoints().end(),
-            [&](size_t gate) { return levelDistance(points[gate].m_position, foot) > 2.0 * reach; })
-            && levelDistance(track.getStartFinish().m_position, foot) > 2.0 * reach;
-        const bool offTheDirt = std::all_of(terrain.getDetours().begin(), terrain.getDetours().end(),
-            [&](const Detour& detour)
-            {
-                return std::all_of(detour.m_path.begin(), detour.m_path.end(),
-                    [&](const Vec3& point) { return levelDistance(point, foot) > reach; });
-            });
-        return offTheCircuit && byNoGate && offTheDirt
-            && !besideSunk(terrain.getDirtRoad(), foot) && !besideSunk(terrain.getRiverbed(), foot);
-    };
-
     std::vector<int> lineOf; // which line each pole is on
     int line = 0;
     double lastPole = 0.0;
@@ -659,7 +687,7 @@ void Scene::raisePoles(const Terrain& terrain)
         lastPole = point.m_distance;
         const Vec3 out = normalize(Vec3(point.m_cross.x, 0.0, point.m_cross.z)) * (double) side[i];
         const Vec3 foot = Vec3(point.m_position.x, 0.0, point.m_position.z) + out * reach;
-        if (!siteIsClear(foot, point.m_distance))
+        if (!siteIsClear(terrain, foot, point.m_distance, reach))
         {
             ++line;
             continue;
@@ -670,6 +698,44 @@ void Scene::raisePoles(const Terrain& terrain)
     for (size_t k = 0; k + 1 < m_poles.size(); ++k)
     {
         m_poles[k].m_wired = lineOf[k] == lineOf[k + 1];
+    }
+}
+
+// Boards of arrows on the outside of the bends that have no telephone line, spread round the
+// bend. Each is turned to face the traffic coming up to it, and points the way the road turns.
+void Scene::placeSigns(const Terrain& terrain)
+{
+    const Track& track = terrain.getTrack();
+    const std::vector<PathPoint>& points = track.getPoints();
+    const double reach = track.getHalfWidth() + m_signOffset;
+    const Vec3 up(0.0, 1.0, 0.0);
+    for (const Bend& bend : findBends(terrain))
+    {
+        if (bend.m_quiet)
+        {
+            continue;
+        }
+        for (int k = 1; k <= m_signsPerBend; ++k)
+        {
+            const size_t index = bend.m_start + (bend.m_end - bend.m_start) * k / (m_signsPerBend + 1);
+            const PathPoint& point = points[index];
+            const Vec3 out = normalize(Vec3(point.m_cross.x, 0.0, point.m_cross.z)) * (double) bend.m_outside;
+            const Vec3 foot = Vec3(point.m_position.x, 0.0, point.m_position.z) + out * reach;
+            if (!siteIsClear(terrain, foot, point.m_distance, reach))
+            {
+                continue;
+            }
+            size_t before = index;
+            while (before > 0 && point.m_distance - points[before].m_distance < m_signLead)
+            {
+                --before;
+            }
+            const Vec3 face = normalize(Vec3(points[before].m_position.x - foot.x, 0.0,
+                points[before].m_position.z - foot.z), out * -1.0);
+            const Vec3 right = cross(face * -1.0, up); // as seen by the traffic it faces
+            const Vec3 arrow = dot(out, right) < 0.0 ? right : right * -1.0;
+            m_signs.push_back(Sign{ foot, face, arrow });
+        }
     }
 }
 
@@ -755,6 +821,63 @@ void Scene::addWire(const Vec3& from, const Vec3& to, const Color& color)
     const Vec3 axisZ = normalize(cross(axisX, Vec3(0.0, 1.0, 0.0)), Vec3(0.0, 0.0, 1.0));
     const Vec3 axisY = cross(axisZ, axisX);
     m_mesh.addBox((from + to) * 0.5, axisX, axisY, axisZ, Vec3(0.5 * reach, m_wireRadius, m_wireRadius), color);
+}
+
+// A white edged red board of white chevrons on two grey posts
+void Scene::addSigns()
+{
+    const Color post(0.55f, 0.56f, 0.58f);
+    const Color back(0.42f, 0.43f, 0.45f);
+    const Color red(0.82f, 0.10f, 0.08f);
+    const Color white(0.96f, 0.96f, 0.92f);
+    const Vec3 up(0.0, 1.0, 0.0);
+    const double halfWidth = 1.25;
+    const double halfHeight = 0.34;
+    const double halfDepth = 0.03;
+    const double rim = 0.06;
+    const double bottom = 1.0;  // of the board, above the ground [m]
+    const double raised = 0.02; // each layer stands this far in front of the one behind [m]
+    const int chevrons = 4;
+    const double stroke = 0.17; // along the board [m]
+    const double point = 0.24;  // from the back of a chevron to its tip [m]
+
+    for (const Sign& sign : m_signs)
+    {
+        const Vec3 along = sign.m_arrow;
+        const Vec3 face = cross(along, up);
+        const Vec3 centre = sign.m_foot + up * (bottom + halfHeight);
+        for (double s : { -0.8, 0.8 })
+        {
+            const double top = bottom + 2.0 * halfHeight;
+            m_mesh.addBox(sign.m_foot + along * (s * halfWidth) - sign.m_face * (halfDepth + 0.05) + up * (0.5 * top),
+                along, up, face, Vec3(0.05, 0.5 * top, 0.05), post);
+        }
+        m_mesh.addBox(centre, along, up, face, Vec3(halfWidth, halfHeight, halfDepth), white);
+
+        // Board coordinates: x along the arrows, y up, on a layer in front of the board
+        const auto at = [&](double x, double y, int layer)
+        {
+            return centre + along * x + up * y + sign.m_face * (halfDepth + raised * layer);
+        };
+        const Vec3 behind = centre - sign.m_face * (halfDepth + raised);
+        m_mesh.addQuad(behind - along * halfWidth - up * halfHeight, behind + along * halfWidth - up * halfHeight,
+            behind + along * halfWidth + up * halfHeight, behind - along * halfWidth + up * halfHeight,
+            back, sign.m_face * -1.0);
+        const double innerWidth = halfWidth - rim;
+        const double innerHeight = halfHeight - rim;
+        m_mesh.addQuad(at(-innerWidth, -innerHeight, 1), at(innerWidth, -innerHeight, 1),
+            at(innerWidth, innerHeight, 1), at(-innerWidth, innerHeight, 1), red, sign.m_face);
+        const double pitch = 2.0 * innerWidth / chevrons;
+        const double height = innerHeight - rim;
+        for (int k = 0; k < chevrons; ++k)
+        {
+            const double x = -innerWidth + pitch * (k + 0.5) - 0.5 * (stroke + point);
+            m_mesh.addQuad(at(x, height, 2), at(x + stroke, height, 2),
+                at(x + stroke + point, 0.0, 2), at(x + point, 0.0, 2), white, sign.m_face);
+            m_mesh.addQuad(at(x + point, 0.0, 2), at(x + stroke + point, 0.0, 2),
+                at(x + stroke, -height, 2), at(x, -height, 2), white, sign.m_face);
+        }
+    }
 }
 
 void Scene::addWreck(const Wreck& wreck)
