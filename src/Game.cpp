@@ -21,9 +21,9 @@ namespace
 
     //                                                 look  gain  corner  brake  plan  throttle
     const Rival g_rivals[] = {
-        { "BLUE",   Color(0.15f, 0.35f, 0.85f), { 14.0,  2.5,  12.5,   5.0,   80.0,  1.00 } },
-        { "YELLOW", Color(0.95f, 0.78f, 0.10f), { 14.0,  2.5,  11.0,   4.0,   80.0,  0.90 } },
-        { "GREEN",  Color(0.15f, 0.62f, 0.25f), { 12.0,  2.5,   9.5,   3.5,   80.0,  0.80 } }
+        { "BLUE",   Color(0.15f, 0.35f, 0.85f), { 14.0,  2.5,  12.9,   5.0,   80.0,  1.00 } },
+        { "YELLOW", Color(0.95f, 0.78f, 0.10f), { 14.0,  2.5,  11.3,   4.0,   80.0,  0.90 } },
+        { "GREEN",  Color(0.15f, 0.62f, 0.25f), { 12.0,  2.5,   9.8,   3.5,   80.0,  0.80 } }
     };
 }
 
@@ -58,6 +58,7 @@ Game::Game(size_t opponents)
     , m_stuckDelay(6.0)
     , m_routeWindow(15)
     , m_missedGrace(15.0)
+    , m_placeGrace(15.0)
     , m_dice(20261114u)
     , m_raceClock(0.0)
     , m_finishers(0)
@@ -122,6 +123,9 @@ void Game::resetRacer(Racer& racer)
     racer.m_routeChoice = -1;
     racer.m_shaken = false;
     racer.m_gateClock = 0.0;
+    racer.m_place = (int) racer.m_gridSlot + 1;
+    racer.m_placeClock = -1.0;
+    racer.m_placeGate = 0;
     racer.m_finished = false;
     racer.m_finishPlace = 0;
     racer.m_finishTime = 0.0;
@@ -419,6 +423,7 @@ void Game::updateCheckpoints(Racer& racer)
         {
             crossing = Racer::Crossing::Cleared;
             racer.m_gateClock = m_raceClock;
+            settlePlace(racer, (int) i + 1);
         }
     }
 }
@@ -436,6 +441,10 @@ void Game::updateProgress(Racer& racer)
     if (racer.m_missedClock >= 0.0)
     {
         racer.m_missedClock += m_fixedStep;
+    }
+    if (racer.m_placeClock >= 0.0)
+    {
+        racer.m_placeClock += m_fixedStep;
     }
 
     for (size_t ahead = m_gateWindow; ahead >= 1; --ahead)
@@ -494,6 +503,7 @@ void Game::updateProgress(Racer& racer)
             racer.m_missedClock = 0.0;
         }
         racer.m_lapTime = 0.0;
+        settlePlace(racer, 0);
     }
 }
 
@@ -543,11 +553,9 @@ int Game::gatesBehind(const Racer& racer) const
     return racer.m_lap * (getCheckpointCount() + 1) + racer.getCheckpointsPassed();
 }
 
-// Finishers lead in the order they finished. The rest are ranked first by the gates they have
-// cleared, the line included: that is certain, so the order is right whenever a truck goes
-// through a gate. Between gates they are ranked by how far round the lap they are, which stands
-// still on a dirt road; then by who cleared the last gate first; and on the grid, where nobody
-// has got anywhere, by grid slot.
+// Finishers lead in the order they finished. The rest are ranked by the gates they have cleared,
+// the line included, then by who cleared the last of them first, and on the grid, where nobody
+// has cleared anything, by grid slot.
 bool Game::isAhead(const Racer& a, const Racer& b) const
 {
     if (a.m_finished || b.m_finished)
@@ -558,20 +566,27 @@ bool Game::isAhead(const Racer& a, const Racer& b) const
     {
         return gatesBehind(a) > gatesBehind(b);
     }
-    const size_t lapPoints = m_terrain.getTrack().getPoints().size();
-    const size_t ground = a.m_lap * lapPoints + a.m_progress;
-    const size_t rival = b.m_lap * lapPoints + b.m_progress;
-    if (ground != rival)
-    {
-        return ground > rival;
-    }
     return a.m_gateClock != b.m_gateClock ? a.m_gateClock < b.m_gateClock : a.m_gridSlot < b.m_gridSlot;
 }
 
 int Game::getPosition(const Racer& racer) const
 {
-    return 1 + (int) std::count_if(m_racers.begin(), m_racers.end(),
+    return racer.m_finished ? racer.m_finishPlace : racer.m_place;
+}
+
+// A racer's place is settled when it clears a gate or the line, and stands until the next one:
+// it is then behind everyone who has cleared more gates, or as many sooner. A change of place
+// is announced, but not in the first seconds of the race, when the field is still sorting itself out.
+void Game::settlePlace(Racer& racer, int gate)
+{
+    const int place = 1 + (int) std::count_if(m_racers.begin(), m_racers.end(),
         [&](const Racer& other) { return &other != &racer && isAhead(other, racer); });
+    if (place != racer.m_place && m_raceClock >= m_placeGrace)
+    {
+        racer.m_placeClock = 0.0;
+        racer.m_placeGate = gate;
+    }
+    racer.m_place = place;
 }
 
 std::string Game::hudString() const
@@ -579,7 +594,14 @@ std::string Game::hudString() const
     const Racer& racer = getPlayer();
     const Judge& judge = racer.m_judge;
 
-    char message[64] = "";
+    char message[96] = "";
+    char place[32] = "";
+    if (racer.m_placeClock >= 0.0 && racer.m_placeClock < m_messageDuration)
+    {
+        std::snprintf(place, sizeof(place), ". POSITION %d/%d", racer.m_place, (int) m_racers.size());
+    }
+    const bool placeNews = place[0] != 0;
+    const char* lineNews = placeNews && racer.m_placeGate == 0 ? place : "";
     if (racer.m_finished)
     {
         std::snprintf(message, sizeof(message), "FINISHED P%d/%d - PRESS R TO RACE AGAIN",
@@ -592,6 +614,10 @@ std::string Game::hudString() const
     else if (judge.isAirborne())
     {
         std::snprintf(message, sizeof(message), "AIR %.1f s", judge.getAirTime());
+    }
+    else if (placeNews && racer.m_placeGate > 0)
+    {
+        std::snprintf(message, sizeof(message), "CHECKPOINT %d%s", racer.m_placeGate, place);
     }
     else if (judge.getLastRating() != Judge::Rating::None && judge.getMessageClock() < m_messageDuration)
     {
@@ -613,11 +639,11 @@ std::string Game::hudString() const
     }
     else if (racer.m_lapClock >= 0.0 && racer.m_lapClock < m_messageDuration)
     {
-        std::snprintf(message, sizeof(message), "LAP %.1f s", racer.m_lastLapTime);
+        std::snprintf(message, sizeof(message), "LAP %.1f s%s", racer.m_lastLapTime, lineNews);
     }
     else if (racer.m_missedClock >= 0.0 && racer.m_missedClock < m_messageDuration && m_raceClock >= m_missedGrace)
     {
-        std::snprintf(message, sizeof(message), "LAP NOT COUNTED - CHECKPOINT MISSED");
+        std::snprintf(message, sizeof(message), "LAP NOT COUNTED - CHECKPOINT MISSED%s", lineNews);
     }
     else if (m_crushClock >= 0.0 && m_crushClock < m_messageDuration && getCrushPoints(racer) > 0)
     {

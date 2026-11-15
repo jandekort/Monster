@@ -603,7 +603,7 @@ int main()
             << floor.m_speedLimit * 3.6 << " km/h in it" << std::endl;
         check(level < -1.5, "the water lies well below the road, so there is a climb out of it");
         check(level - floor.m_point.y > 0.7 && level - floor.m_point.y < 1.7, "it is about as deep as a wheel is high");
-        check(std::fabs(floor.m_speedLimit * 3.6 - 25.0) < 1.0e-6, "in the water a truck makes 25 km/h at most");
+        check(std::fabs(floor.m_speedLimit * 3.6 - 15.0) < 1.0e-6, "in the water a truck makes 15 km/h at most");
         check(ground(ford - bed.m_cross * 30.0).m_speedLimit == 0.0, "and nothing holds it back on dry land");
         check(std::fabs(ground(ford - bed.m_forward * 9.0).m_traction - 0.70) < 1.0e-9, "the floor of the river is gravel");
         check(ground(ford - bed.m_cross * (bed.halfWidth() - 1.0)).m_point.y > level + 1.0
@@ -716,7 +716,7 @@ int main()
         check(road.m_arrived && careful.m_arrived && sunkenSide.m_arrived, "road and shortcut both lead back to the road before the line");
         check(careful.m_upright && careful.m_firstWet > -7.5, "a truck that keeps to the dry lane stays dry most of the way over the bridge");
         check(careful.m_wadeTime > 1.2, "but then it has to wade: the second half of the bridge has gone");
-        check(careful.m_wadeSpeed > 0.0 && careful.m_wadeSpeed < 25.0 / 3.6 + 0.7, "at no more than 25 km/h");
+        check(careful.m_wadeSpeed > 0.0 && careful.m_wadeSpeed < 20.0 / 3.6, "at no more than about 20 km/h, the wheels hold 15 km/h but momentum carries the body over the bank");
         check(careful.m_lowest < -1.0, "and climb back out of the river to the road");
         check(sunkenSide.m_upright && sunkenSide.m_firstWet < careful.m_firstWet - 3.0
             && sunkenSide.m_wadeTime > careful.m_wadeTime + 0.8, "over the sunken side of the bridge it wades for longer");
@@ -1206,6 +1206,13 @@ int main()
         std::vector<int> tally(racers.size(), gatesALap);    // gates cleared since the start, laps included
         int placesChecked = 0;
         bool placedRightAtGates = true;
+        std::vector<int> shown;
+        std::transform(racers.begin(), racers.end(), std::back_inserter(shown),
+            [&](const Racer& racer) { return race.getPosition(racer); });
+        bool placeOnlyAtGates = true;
+        bool quietAtStart = true;
+        bool announcedAtGates = true;
+        int announcements = 0;
         const std::vector<PathPoint>& where = race.getTerrain().getTrack().getPoints();
         bool lapsWereComplete = true;
         bool overWithThePlayer = true;
@@ -1265,6 +1272,21 @@ int main()
                     placedRightAtGates = placedRightAtGates && race.getPosition(racers[i]) == expected;
                     ++placesChecked;
                 }
+                // The place changes only as the truck itself clears a gate or the line, and the
+                // player is told of a change, unless it is too early in the race or in the air
+                const int place = race.getPosition(racers[i]);
+                placeOnlyAtGates = placeOnlyAtGates && (now != tally[i] || place == shown[i]);
+                if (i == 0 && now > tally[i] && place != shown[i] && !racers[i].m_finished)
+                {
+                    const bool told = race.hudString().find("POSITION") != std::string::npos;
+                    const bool hidden = racers[i].m_judge.isAirborne() || racers[i].m_wrecked;
+                    announcedAtGates = announcedAtGates
+                        && (race.getRaceTime() < 15.0 ? !told : told || hidden);
+                    announcements += told ? 1 : 0;
+                }
+                quietAtStart = quietAtStart && (race.getRaceTime() >= 15.0
+                    || race.hudString().find("POSITION") == std::string::npos);
+                shown[i] = place;
                 tally[i] = now;
             }
             overWithThePlayer = overWithThePlayer && race.isRaceOver() == racers.front().m_finished;
@@ -1306,6 +1328,10 @@ int main()
         check(opponentsByShortcut <= 3, "the opponents seldom take the shortcut");
         std::cout << "    places checked at " << placesChecked << " gates and line crossings" << std::endl;
         check(placesChecked > 40 && placedRightAtGates, "at every gate a truck's place is right: behind all that were through it sooner");
+        std::cout << "    the player was told of " << announcements << " changes of place" << std::endl;
+        check(placeOnlyAtGates, "a truck's place changes only as it clears a gate or the line");
+        check(quietAtStart && announcements > 0 && announcedAtGates,
+            "a change of place is announced at the gate, but not in the first 15 s");
         check(deepest < 0.8, "trucks bump but do not drive through each other");
         check(overWithThePlayer && race.isRaceOver(), "the race is over when the player finishes");
         check(race.getPosition() == racers.front().m_finishPlace, "the player's position is the finishing place");

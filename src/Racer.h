@@ -68,10 +68,13 @@ struct Racer
     int m_routeChoice;        // the last choice of route made, so that each is made once
     bool m_shaken;            // true->came to grief, and plays safe at the next choices
     double m_gateClock;       // race time at which the last gate was cleared or lap credited [s]
+    int m_place;              // as settled when it last cleared a gate or the line, 1->leading
 
     // Messages and stunts
     double m_lapClock;        // seconds since the last lap was finished, negative->none yet
     double m_missedClock;     // seconds since a lap was rejected, negative->none yet
+    double m_placeClock;      // seconds since a change of place was announced, negative->none yet
+    int m_placeGate;          // the gate it was announced at, 0->the line
     bool m_loopDone;          // true->loop already scored this lap
     bool m_ahead;             // true->truck is beyond the start/finish line
     double m_loopClock;       // seconds since the loop was scored, negative->not yet

@@ -155,6 +155,14 @@ Scene::Scene()
     , m_treeClearance(14.0)
     , m_planted(false)
     , m_trees()
+    , m_poleHeight(8.0)
+    , m_poleSpacing(24.0)
+    , m_poleOffset(4.0)
+    , m_lineRun(60.0)
+    , m_quietRun(30.0)
+    , m_wireSag(0.35)
+    , m_wireRadius(0.025)
+    , m_poles()
 {
 }
 
@@ -172,7 +180,13 @@ void Scene::build(const Game& game, const Vec3& eye)
     addBarrier(game.getTerrain().getBarrier());
     addWater(game.getTerrain(), game.getRaceTime());
     addRiverside(game.getTerrain(), game.getRaceTime());
-    plantTrees(game.getTerrain());
+    if (!m_planted)
+    {
+        plantTrees(game.getTerrain());
+        raisePoles(game.getTerrain());
+        m_planted = true;
+    }
+    addPoles();
     addScenery();
     for (const Racer& racer : game.getRacers())
     {
@@ -464,15 +478,27 @@ void Scene::addGlyph(const Vec3& center, const Vec3& right, const Vec3& up, doub
     }
 }
 
+namespace
+{
+    // In a hole or on its brink, where a tree or a pole would stand in the air
+    bool besideSunk(const DirtRoad& sunk, const Vec3& foot)
+    {
+        const double margin = 4.0;
+        const Vec3 offset = foot - sunk.m_centre;
+        return std::fabs(dot(offset, sunk.m_cross)) < sunk.halfWidth() + margin
+            && std::fabs(dot(offset, sunk.m_forward)) < sunk.m_halfLength + margin;
+    }
+
+    double levelDistance(const Vec3& a, const Vec3& b)
+    {
+        return std::hypot(a.x - b.x, a.z - b.z);
+    }
+}
+
 // Trees on a jittered grid, kept clear of the road
 void Scene::plantTrees(const Terrain& terrain)
 {
     const Track& track = terrain.getTrack();
-    if (m_planted)
-    {
-        return;
-    }
-    m_planted = true;
 
     const std::vector<PathPoint>& points = track.getPoints();
     double minX = points.front().m_position.x;
@@ -515,21 +541,220 @@ void Scene::plantTrees(const Terrain& terrain)
                             return dx*dx + dz*dz > 0.5 * m_treeClearance*m_treeClearance;
                         });
                 });
-            // Nor in a hole or on its brink, where a tree would stand in the air
-            const auto beside = [&](const DirtRoad& sunk)
-            {
-                const double margin = 4.0;
-                const Vec3 offset = foot - sunk.m_centre;
-                return std::fabs(dot(offset, sunk.m_cross)) < sunk.halfWidth() + margin
-                    && std::fabs(dot(offset, sunk.m_forward)) < sunk.m_halfLength + margin;
-            };
-            const bool onFirmGround = !beside(terrain.getDirtRoad()) && !beside(terrain.getRiverbed());
+            const bool onFirmGround = !besideSunk(terrain.getDirtRoad(), foot) && !besideSunk(terrain.getRiverbed(), foot);
             if (clear && offTheDirt && onFirmGround && (seed * 29) % 5 != 0)
             {
                 m_trees.push_back(Vec3(foot.x, 1.0 + 0.1 * ((seed * 5) % 7), foot.z));
             }
         }
     }
+}
+
+// Telephone lines follow the outside of the quiet bends, those with no gate, junction, wreck,
+// barrier or stunt near, and run on along the road either side. A pole goes in every
+// m_poleSpacing, unless it would stand by a gate, on another part of the circuit, by a dirt road
+// or in a hole; there the wires break off.
+void Scene::raisePoles(const Terrain& terrain)
+{
+    const Track& track = terrain.getTrack();
+    const std::vector<PathPoint>& points = track.getPoints();
+
+    std::vector<double> busy; // where along the lap something is going on [m]
+    std::transform(track.getCheckpoints().begin(), track.getCheckpoints().end(), std::back_inserter(busy),
+        [&](size_t gate) { return points[gate].m_distance; });
+    busy.push_back(0.0);
+    busy.push_back(track.getLength());
+    for (const Detour& detour : terrain.getDetours())
+    {
+        busy.push_back(points[detour.m_leave].m_distance);
+        busy.push_back(points[detour.m_rejoin].m_distance);
+    }
+    for (const PathPoint& point : points)
+    {
+        if (point.m_kind != PathPoint::Kind::Flat)
+        {
+            busy.push_back(point.m_distance);
+        }
+    }
+    std::vector<Vec3> sights;
+    std::transform(terrain.getWrecks().begin(), terrain.getWrecks().end(), std::back_inserter(sights),
+        [](const Wreck& wreck) { return wreck.getPosition(); });
+    sights.push_back(terrain.getBarrier().m_position);
+
+    // The side a line runs on, in units of m_cross: the outside of its bend, 0->no line.
+    // Where the lines of two bends that turn opposite ways meet, the line stops.
+    std::vector<int> side(points.size(), 0);
+    for (size_t start = 0; start < points.size(); )
+    {
+        size_t end = start;
+        while (end + 1 < points.size() && points[end + 1].m_corner == points[start].m_corner)
+        {
+            ++end;
+        }
+        const double from = points[start].m_distance;
+        const double to = points[end].m_distance;
+        const bool quiet = std::none_of(busy.begin(), busy.end(),
+            [&](double at) { return at > from - m_quietRun && at < to + m_quietRun; })
+            && std::all_of(points.begin() + start, points.begin() + end + 1,
+            [&](const PathPoint& point)
+            {
+                return std::all_of(sights.begin(), sights.end(),
+                    [&](const Vec3& sight) { return levelDistance(sight, point.m_position) > m_quietRun; });
+            });
+        if (points[start].m_corner && quiet)
+        {
+            const Vec3 turn = points[end].m_forward - points[start].m_forward;
+            const int outside = dot(turn, points[(start + end) / 2].m_cross) > 0.0 ? -1 : 1;
+            for (size_t i = 0; i < points.size(); ++i)
+            {
+                const double at = points[i].m_distance;
+                if (at > from - m_lineRun && at < to + m_lineRun && points[i].m_kind == PathPoint::Kind::Flat)
+                {
+                    side[i] = side[i] == 0 || side[i] == outside ? outside : 0;
+                }
+            }
+        }
+        start = end + 1;
+    }
+
+    const double reach = track.getHalfWidth() + m_poleOffset;
+    const double lap = track.getLength();
+    const auto siteIsClear = [&](const Vec3& foot, double at)
+    {
+        const bool offTheCircuit = std::all_of(points.begin(), points.end(),
+            [&](const PathPoint& point)
+            {
+                const double along = std::fabs(point.m_distance - at);
+                return std::min(along, lap - along) < 2.0 * reach
+                    || levelDistance(point.m_position, foot) > reach - 1.0;
+            });
+        const bool byNoGate = std::all_of(track.getCheckpoints().begin(), track.getCheckpoints().end(),
+            [&](size_t gate) { return levelDistance(points[gate].m_position, foot) > 2.0 * reach; })
+            && levelDistance(track.getStartFinish().m_position, foot) > 2.0 * reach;
+        const bool offTheDirt = std::all_of(terrain.getDetours().begin(), terrain.getDetours().end(),
+            [&](const Detour& detour)
+            {
+                return std::all_of(detour.m_path.begin(), detour.m_path.end(),
+                    [&](const Vec3& point) { return levelDistance(point, foot) > reach; });
+            });
+        return offTheCircuit && byNoGate && offTheDirt
+            && !besideSunk(terrain.getDirtRoad(), foot) && !besideSunk(terrain.getRiverbed(), foot);
+    };
+
+    std::vector<int> lineOf; // which line each pole is on
+    int line = 0;
+    double lastPole = 0.0;
+    for (size_t i = 0; i < points.size(); ++i)
+    {
+        const PathPoint& point = points[i];
+        if (side[i] == 0 || i == 0 || side[i] != side[i - 1])
+        {
+            ++line;
+            lastPole = point.m_distance - m_poleSpacing;
+        }
+        if (side[i] == 0 || point.m_distance - lastPole < m_poleSpacing)
+        {
+            continue;
+        }
+        lastPole = point.m_distance;
+        const Vec3 out = normalize(Vec3(point.m_cross.x, 0.0, point.m_cross.z)) * (double) side[i];
+        const Vec3 foot = Vec3(point.m_position.x, 0.0, point.m_position.z) + out * reach;
+        if (!siteIsClear(foot, point.m_distance))
+        {
+            ++line;
+            continue;
+        }
+        m_poles.push_back(Pole{ foot, out, false });
+        lineOf.push_back(line);
+    }
+    for (size_t k = 0; k + 1 < m_poles.size(); ++k)
+    {
+        m_poles[k].m_wired = lineOf[k] == lineOf[k + 1];
+    }
+}
+
+// A weathered round pole with two cross-arms: a short one at the top, reaching back over the
+// verge, and a longer one below it across the pole, with glass insulators carrying the wires
+void Scene::addPoles()
+{
+    const Color wood(0.47f, 0.35f, 0.24f);
+    const Color sawn(0.62f, 0.50f, 0.34f);
+    const Color timber(0.36f, 0.26f, 0.17f);
+    const Color glass(0.60f, 0.80f, 0.72f);
+    const Color wire(0.10f, 0.10f, 0.11f);
+    const Vec3 up(0.0, 1.0, 0.0);
+
+    // Struct Arm: a cross-arm, from the pole towards the road (negative) and away from it
+    struct Arm
+    {
+        double m_height; // of its top, below the top of the pole [m]
+        double m_near;
+        double m_far;
+    };
+    const Arm arms[] = { { 0.02, -1.45, 0.10 }, { 0.80, -1.50, 0.80 } };
+    const double armHalf = 0.06;
+    const double poleRadius = 0.13;
+    const double insulatorHeight = 0.14;
+
+    // Struct Insulator: where along an arm it stands, and on which
+    struct Insulator
+    {
+        size_t m_arm;
+        double m_out;
+    };
+    const Insulator insulators[] = { { 0, -1.25 }, { 0, -0.55 }, { 1, -1.30 }, { 1, -0.55 }, { 1, 0.55 } };
+    const auto tip = [&](const Pole& pole, const Insulator& insulator)
+    {
+        return pole.m_foot + pole.m_out * insulator.m_out
+            + up * (m_poleHeight - arms[insulator.m_arm].m_height + 0.85 * insulatorHeight);
+    };
+
+    for (size_t k = 0; k < m_poles.size(); ++k)
+    {
+        const Pole& pole = m_poles[k];
+        const Vec3 along = cross(pole.m_out, up);
+        m_mesh.addCylinder(pole.m_foot - up * 0.2, pole.m_foot + up * m_poleHeight, poleRadius, wood, sawn);
+        for (const Arm& arm : arms)
+        {
+            const Vec3 middle = pole.m_foot + pole.m_out * (0.5 * (arm.m_near + arm.m_far))
+                + up * (m_poleHeight - arm.m_height - armHalf);
+            m_mesh.addBox(middle, pole.m_out, up, along,
+                Vec3(0.5 * (arm.m_far - arm.m_near), armHalf, 0.8 * armHalf), timber);
+        }
+        for (const Insulator& insulator : insulators)
+        {
+            const Vec3 base = pole.m_foot + pole.m_out * insulator.m_out
+                + up * (m_poleHeight - arms[insulator.m_arm].m_height + 0.5 * insulatorHeight);
+            m_mesh.addBox(base, pole.m_out, up, along, Vec3(0.04, 0.5 * insulatorHeight, 0.04), glass);
+            if (pole.m_wired)
+            {
+                // Hanging in a curve, drawn as a few straight lengths
+                const Vec3 from = tip(pole, insulator);
+                const Vec3 to = tip(m_poles[k + 1], insulator);
+                const int pieces = 4;
+                const auto at = [&](int piece)
+                {
+                    const double t = piece / (double) pieces;
+                    return from + (to - from) * t - up * (4.0 * m_wireSag * t * (1.0 - t));
+                };
+                for (int piece = 0; piece < pieces; ++piece)
+                {
+                    addWire(at(piece), at(piece + 1), wire);
+                }
+            }
+        }
+    }
+}
+
+void Scene::addWire(const Vec3& from, const Vec3& to, const Color& color)
+{
+    const Vec3 span = to - from;
+    const double reach = length(span);
+    require(reach > 0.0, "Scene::addWire: the ends must differ");
+    const Vec3 axisX = span * (1.0 / reach);
+    const Vec3 axisZ = normalize(cross(axisX, Vec3(0.0, 1.0, 0.0)), Vec3(0.0, 0.0, 1.0));
+    const Vec3 axisY = cross(axisZ, axisX);
+    m_mesh.addBox((from + to) * 0.5, axisX, axisY, axisZ, Vec3(0.5 * reach, m_wireRadius, m_wireRadius), color);
 }
 
 void Scene::addWreck(const Wreck& wreck)

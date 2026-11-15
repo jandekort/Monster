@@ -57,7 +57,7 @@ public:
     double getRaceTime() const { return m_raceClock; }
     bool isRaceOver() const { return getPlayer().m_finished; } // the race ends when the player finishes
     int getPosition() const { return getPosition(getPlayer()); }
-    int getPosition(const Racer& racer) const; // 1->leading
+    int getPosition(const Racer& racer) const; // 1->leading, as settled at its last gate or the line
     // "speed|score|best|message|lap|lap time|best lap time|checkpoints passed|checkpoints"
     // "|tyre setup|setup name|grip|top speed in km/h|position|racers|race laps|finished""
     std::string hudString() const;
@@ -71,6 +71,7 @@ private:
     void collideRacers();
     bool isAhead(const Racer& a, const Racer& b) const;
     int gatesBehind(const Racer& racer) const; // gates cleared since the start, laps included
+    void settlePlace(Racer& racer, int gate);  // as it clears a gate (1->the first) or the line (0)
     void updateStuck(Racer& racer, size_t progressBefore);
     void chooseRoute(Racer& racer);
     const Detour* detourOf(const Racer& racer) const; // the dirt road a racer is on, or none
@@ -107,6 +108,7 @@ private:
     double m_stuckDelay;      // a computer driver making no progress this long is recovered [s]
     size_t m_routeWindow;     // track points before a junction over which the route is chosen
     double m_missedGrace;     // a lap that does not count is not announced this early in the race [s]
+    double m_placeGrace;      // nor is a change of place [s]
     unsigned m_dice;          // state of the generator the route choices are drawn from
 
     double m_raceClock;       // seconds since the start

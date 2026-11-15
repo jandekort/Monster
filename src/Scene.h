@@ -60,6 +60,14 @@ public:
     const Mesh& getMesh() const { return m_mesh; }
 
 private:
+    // Struct Pole: a wooden telephone pole beside the road
+    struct Pole
+    {
+        Vec3 m_foot;
+        Vec3 m_out;   // level unit vector away from the road; the cross-arms reach back over the verge
+        bool m_wired; // true->the wires run on to the next pole
+    };
+
     void addGround(const Terrain& terrain, const Vec3& eye);
     void addFaces(const Terrain& terrain);
     void addMarkings(const Terrain& terrain);
@@ -71,6 +79,9 @@ private:
     void addGlyph(const Vec3& center, const Vec3& right, const Vec3& up, double pixel,
         const unsigned char* rows, const Color& color);
     void plantTrees(const Terrain& terrain);
+    void raisePoles(const Terrain& terrain);
+    void addPoles();
+    void addWire(const Vec3& from, const Vec3& to, const Color& color);
     void addWreck(const Wreck& wreck);
     void addBarrier(const Barrier& barrier);
     void addWater(const Terrain& terrain, double time);
@@ -95,6 +106,14 @@ private:
     int m_glyphRows;          // banner font, pixels down
     double m_treeSpacing;
     double m_treeClearance; // distance kept from the road centre [m]
-    bool m_planted;         // true->m_trees is filled
+    bool m_planted;         // true->m_trees and m_poles are filled
     std::vector<Vec3> m_trees; // foot position; y holds the size factor
+    double m_poleHeight;
+    double m_poleSpacing;   // along the centreline [m]
+    double m_poleOffset;    // a pole stands this far beyond the edge of the road [m]
+    double m_lineRun;       // a telephone line runs on this far either side of its bend [m]
+    double m_quietRun;      // a bend with a gate, a junction, a wreck or a stunt this near has none [m]
+    double m_wireSag;       // drop of a wire halfway between poles [m]
+    double m_wireRadius;
+    std::vector<Pole> m_poles;
 };

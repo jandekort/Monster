@@ -12,10 +12,11 @@ staggered grid behind the start line with the player at the back. The HUD shows
 the player's position in the field and the lap out of three. The race ends when
 the player finishes; R restarts it from the grid.
 
-The position is settled at every gate and at the line: a truck that clears one
-is placed behind exactly those that were through it sooner. Between gates the
-trucks level on gates are ranked by how far round the lap they are, which is
-only an estimate while one of them is on a dirt road.
+The position is settled at every gate and at the line, and only there: a truck
+that clears one is placed behind those that have cleared more gates, or as many
+sooner, and keeps that place until its next gate. When the player's place
+changes the HUD says so for a moment (CHECKPOINT 2. POSITION 3/4), though not in
+the first 15 seconds.
 
 The opponents drive by the same rules as the player: they clear the same gates
 to be credited a lap, they are set upright again after a crash, and one that
@@ -63,7 +64,7 @@ After the last gate and the wrecks a second dirt road leaves the main road to
 the left and cuts inside the last two bends. It crosses a river and rejoins the
 main road just before the start and finish line. The river lies 2.1 m below
 the road and is 0.9 m deep, so the track goes down a bank to it and climbs out
-again on the far side. In the water a truck makes 25 km/h at most, and
+again on the far side. In the water a truck makes 15 km/h at most, and
 whatever speed it arrives with above that is dragged off.
 
 What is left of a log bridge reaches from the near bank to the middle of the
@@ -76,7 +77,7 @@ wade. Wheels on the sunken side of the bridge are in the water and are held
 back like any others. Taken with care the shortcut saves about four seconds
 over the road; taken flat out it usually ends on the roof. The piles, ropes,
 reeds, rocks and floating logs are scenery and do not stop a truck. A computer
-driver takes this shortcut on one lap in twelve: it slows to 25 km/h before the
+driver takes this shortcut on one lap in twelve: it slows to 15 km/h before the
 river, keeps to the dry lane and wades the rest.
 
 The going differs by surface. The road and the bridge are quickest, the dirt
@@ -162,7 +163,7 @@ matrix each frame; `web/monster.js` only uploads and draws them.
 Collision is done with ray casts against the road faces, so surfaces can be
 stacked (bridge over road) or upside down (loop). Each wheel casts a fan of
 rays along the suspension axis; chassis and roof points are tested with rays
-from the centre of mass. Trees and mountains are scenery without collision.
+from the centre of mass. Trees, mountains and the wooden telephone poles along the quiet bends are scenery without collision.
 
 Trucks are not in the ray cast world. Each carries a hull of six spheres, and
 where the hulls of two trucks overlap they are pushed apart by a spring and a
