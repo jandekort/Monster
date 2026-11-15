@@ -1281,10 +1281,10 @@ int main()
                     const bool told = race.hudString().find("POSITION") != std::string::npos;
                     const bool hidden = racers[i].m_judge.isAirborne() || racers[i].m_wrecked;
                     announcedAtGates = announcedAtGates
-                        && (race.getRaceTime() < 15.0 ? !told : told || hidden);
+                        && (race.getRaceTime() < 8.0 ? !told : told || hidden);
                     announcements += told ? 1 : 0;
                 }
-                quietAtStart = quietAtStart && (race.getRaceTime() >= 15.0
+                quietAtStart = quietAtStart && (race.getRaceTime() >= 8.0
                     || race.hudString().find("POSITION") == std::string::npos);
                 shown[i] = place;
                 tally[i] = now;
@@ -1331,7 +1331,7 @@ int main()
         std::cout << "    the player was told the place " << announcements << " times" << std::endl;
         check(placeOnlyAtGates, "a truck's place changes only as it clears a gate or the line");
         check(quietAtStart && announcements >= 10 && announcedAtGates,
-            "the place is announced at every gate and the line, but not in the first 15 s");
+            "the place is announced at every gate and the line, but not in the first 8 s");
         check(deepest < 0.8, "trucks bump but do not drive through each other");
         check(overWithThePlayer && race.isRaceOver(), "the race is over when the player finishes");
         check(race.getPosition() == racers.front().m_finishPlace, "the player's position is the finishing place");

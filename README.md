@@ -16,7 +16,7 @@ The position is settled at every gate and at the line, and only there: a truck
 that clears one is placed behind those that have cleared more gates, or as many
 sooner, and keeps that place until its next gate. Each time the player clears a
 gate the HUD shows the place for a moment (CHECKPOINT 2. POSITION 3/4; at the
-line it goes with the lap time), though not in the first 15 seconds.
+line it goes with the lap time), though not in the first 8 seconds.
 
 The opponents drive by the same rules as the player: they clear the same gates
 to be credited a lap, they are set upright again after a crash, and one that

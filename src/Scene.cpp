@@ -823,13 +823,13 @@ void Scene::addWire(const Vec3& from, const Vec3& to, const Color& color)
     m_mesh.addBox((from + to) * 0.5, axisX, axisY, axisZ, Vec3(0.5 * reach, m_wireRadius, m_wireRadius), color);
 }
 
-// A white edged red board of white chevrons on two grey posts
+// A black edged yellow board of black chevrons on two grey posts
 void Scene::addSigns()
 {
     const Color post(0.55f, 0.56f, 0.58f);
     const Color back(0.42f, 0.43f, 0.45f);
-    const Color red(0.82f, 0.10f, 0.08f);
-    const Color white(0.96f, 0.96f, 0.92f);
+    const Color yellow(0.98f, 0.80f, 0.10f);
+    const Color black(0.10f, 0.10f, 0.10f);
     const Vec3 up(0.0, 1.0, 0.0);
     const double halfWidth = 1.25;
     const double halfHeight = 0.34;
@@ -852,7 +852,7 @@ void Scene::addSigns()
             m_mesh.addBox(sign.m_foot + along * (s * halfWidth) - sign.m_face * (halfDepth + 0.05) + up * (0.5 * top),
                 along, up, face, Vec3(0.05, 0.5 * top, 0.05), post);
         }
-        m_mesh.addBox(centre, along, up, face, Vec3(halfWidth, halfHeight, halfDepth), white);
+        m_mesh.addBox(centre, along, up, face, Vec3(halfWidth, halfHeight, halfDepth), black);
 
         // Board coordinates: x along the arrows, y up, on a layer in front of the board
         const auto at = [&](double x, double y, int layer)
@@ -866,16 +866,16 @@ void Scene::addSigns()
         const double innerWidth = halfWidth - rim;
         const double innerHeight = halfHeight - rim;
         m_mesh.addQuad(at(-innerWidth, -innerHeight, 1), at(innerWidth, -innerHeight, 1),
-            at(innerWidth, innerHeight, 1), at(-innerWidth, innerHeight, 1), red, sign.m_face);
+            at(innerWidth, innerHeight, 1), at(-innerWidth, innerHeight, 1), yellow, sign.m_face);
         const double pitch = 2.0 * innerWidth / chevrons;
         const double height = innerHeight - rim;
         for (int k = 0; k < chevrons; ++k)
         {
             const double x = -innerWidth + pitch * (k + 0.5) - 0.5 * (stroke + point);
             m_mesh.addQuad(at(x, height, 2), at(x + stroke, height, 2),
-                at(x + stroke + point, 0.0, 2), at(x + point, 0.0, 2), white, sign.m_face);
+                at(x + stroke + point, 0.0, 2), at(x + point, 0.0, 2), black, sign.m_face);
             m_mesh.addQuad(at(x + point, 0.0, 2), at(x + stroke + point, 0.0, 2),
-                at(x + stroke, -height, 2), at(x, -height, 2), white, sign.m_face);
+                at(x + stroke, -height, 2), at(x, -height, 2), black, sign.m_face);
         }
     }
 }
